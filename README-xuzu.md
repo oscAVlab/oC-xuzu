@@ -11,6 +11,7 @@ Código propio en `software/src/xuzu/`. Cambios al Phazerville: `OC_apps.cpp`, `
 
 ## Versiones
 
+- `xuzu-firmware/o_C-osc[AV]lab_v4.19.hex`: Techno toca un bassline en semicorcheas (riff que esquiva el bombo: rolling, offbeat, galope), Densidad elige la figura y Adorno los acentos.
 - `xuzu-firmware/o_C-osc[AV]lab_v4.18.hex`: salvapantallas "Particulas" que reacciona a las 4 salidas y a TR1 (preview en `particulas-preview.gif`); los applets Compas, Eucl x4 y Brains controlan todo (lista de parametros, CV1/CV2 asignables, presets 1-16 de las apps). Quitados los 15 applets de reloj y ritmo de Phazerville.
 - `xuzu-firmware/o_C-phazerville-v1.9.3_xuzu_v4.17.hex`: estilos Techno, Acid, Minimal, Dub techno y Electro, familia de armonía Electrónica, melodía con perfil propio por estilo, slide de Acid en la salida B y opción "Acento (acid)" en la salida D.
 - `xuzu-firmware/o_C-phazerville-v1.9.3_xuzu_v4.16r.hex`: la v4.16 reconstruida desde este código.

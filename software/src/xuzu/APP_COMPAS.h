@@ -454,7 +454,7 @@ private:
                (ev.cycle_start ? RF_CYCLE : 0) | (ev.new_chord ? RF_CHORD : 0) | (BurstDecision(ev) ? RF_BURST : 0);
     ms.mel_n = ev.mel_n; ms.mel_main = ev.mel_main; ms.root = (int8_t)engine.RootSemis();
     for (int i = 0; i < 4; ++i) { ms.mel_at[i] = ev.mel_at[i]; ms.mel_semis[i] = ev.mel_semis[i]; }
-    ms.notes = ev.mel_notes | ((engine.Def().flags & compas::F_ACID) ? 0x80 : 0);   // bit 7: a semicorchea line
+    ms.notes = ev.mel_notes | ((engine.Def().flags & compas::F_LINE16) ? 0x80 : 0);   // bit 7: a semicorchea line
     ms.acc = ev.mel_acc; ms.tie = ev.mel_tie;
 
     UpdateLayer(0, FreezeR(), engine.LoopTicks(engine.loop_r));

@@ -145,7 +145,7 @@ static const FamDef FAMS[NUM_FAMS] = {
 static constexpr int MAX_PROGS = 10;   // largest family (Flamenca)
 
 // ---------------------------------------------------------------- styles
-enum StyleFlags : uint8_t { F_CELLS = 1, F_TERNARY = 2, F_STRUM = 4, F_ELEC = 8, F_ACID = 16 };
+enum StyleFlags : uint8_t { F_CELLS = 1, F_TERNARY = 2, F_STRUM = 4, F_ELEC = 8, F_ACID = 16, F_LINE16 = 32 };   // LINE16: the melody is a semicorchea line
 struct StyleDef {
   const char *name;
   uint8_t len;        // cycle length in corcheas
@@ -184,8 +184,8 @@ static const StyleDef STYLES[NUM_STYLES] = {
   {"Bossa",       8, 2, 1, POS(0, 6, 8, 14),   POS(3, 10, 13),                  14, 0, H_BOSS, 0, H_BOSS},
   {"Bolero",     16, 2, 1, POS(0, 8, 16, 24),  POS(4, 6, 12, 14, 20, 22, 28, 30), 28, F_STRUM, H_BOLE, 0, H_BOLE},
   // electronic, one 4/4 bar of 16 semicorcheas. A = kick, B = hats / percussion, no remates
-  {"Techno",      8, 2, 1, POS(0, 4, 8, 12),   POS(2, 6, 10, 14),               14, F_ELEC, H_ELEC, 1, H_ELEC},
-  {"Acid",        8, 2, 1, POS(0, 4, 8, 12),   POS(2, 6, 10, 14),               14, F_ELEC|F_ACID, H_ELEC, 3, H_ELEC},
+  {"Techno",      8, 2, 1, POS(0, 4, 8, 12),   POS(2, 6, 10, 14),               14, F_ELEC|F_LINE16, H_ELEC, 1, H_ELEC},
+  {"Acid",        8, 2, 1, POS(0, 4, 8, 12),   POS(2, 6, 10, 14),               14, F_ELEC|F_ACID|F_LINE16, H_ELEC, 3, H_ELEC},
   {"Minimal",     8, 2, 1, POS(0, 4, 8, 12),   POS(3, 7, 11, 14),               14, F_ELEC, H_ELEC, 0, H_ELEC},
   {"Dub techno",  8, 2, 1, POS(0, 4, 8, 12),   POS(3, 6, 10, 14),               14, F_ELEC, H_ELEC, 5, H_ELEC},
   {"Electro",     8, 2, 1, POS(0, 7, 10),      POS(4, 12),                      12, F_ELEC, H_ELEC, 2, H_ELEC},
@@ -437,6 +437,7 @@ public:
     Comping(ev, s0, a_on || a_off);
 
     if (Acid()) { AcidLine(ev, s0); return ev; }
+    if (Def().flags & F_LINE16) { TechnoLine(ev, s0); return ev; }
     bool mel = a_on || a_off;
     if (!mel && base) mel = rnd100(mkey ^ 0xABCDu, mp, 8) < (notas < 50 ? notas * 70 / 100 : 35 + (notas - 50) * 13 / 10);
     if (!mel && !base && notas > 50) mel = rnd100(mkey ^ 0xABCEu, mp, 9) < (notas - 50) * 8 / 10;
@@ -807,6 +808,36 @@ private:
       ev.mel_notes |= 1u << n;
       if (rnd100(mkey ^ 0xACC0u, mi, 16) < 10 + adorno * 6 / 10) ev.mel_acc |= 1u << n;
       if (rnd100(mkey ^ 0x511Du, mi, 17) < empuje * 6 / 10) ev.mel_tie |= 1u << n;
+      n++;
+    }
+    if (n) melody_semis = ev.mel_semis[n - 1];
+    ev.mel_n = (uint8_t)n; ev.mel_main = 0;
+  }
+
+  // Techno: a bass lead on the semicorcheas. Each melody seed is a riff: a rhythm figure that
+  // dodges the kick (rolling, offbeat, gallop...) and a short cell of pitches around the root
+  // (root, octave, fifth, minor 3rd, minor 7th) that repeats every beat or two.
+  // Densidad picks busier figures, Notas adds or removes notes, Adorno = accents.
+  void TechnoLine(Event &ev, int s0) {
+    static const uint16_t FIG[8] = {0x4444, 0xAAAA, 0x6666, 0xCCCC, 0x4E4E, 0xAEAE, 0xE6E6, 0xEEEE};   // bit i = semicorchea i
+    static const int8_t IV[8] = {0, 0, 0, 12, 0, 7, 10, 3};
+    int fig_i = (density * 6 / 100) + (int)(hash(mkey, 0x7EC, 1) % 3) - 1;
+    fig_i = fig_i < 0 ? 0 : fig_i > 7 ? 7 : fig_i;
+    const uint16_t fig = FIG[fig_i];
+    const int cell = (hash(mkey, 0x7EC, 2) & 1) ? 4 : 8;           // the pitch cell repeats every beat or every 2 beats
+    const int base = ((RootSemis() % 12) + 12) % 12;
+    int n = 0;
+    for (int h = 0; h < 2; ++h) {
+      const int s = s0 + h;
+      const bool in_fig = fig & (1u << (s & 15));
+      int chance = in_fig ? 70 + notas * 30 / 100 : (notas > 60 ? (notas - 60) * 3 / 4 : 0);
+      if (rnd100(mkey ^ 0x7EC0u, s, 3) >= chance) continue;
+      const int k = s % cell;
+      int iv = IV[hash(mkey ^ 0x7EC1u, k, 4) % 8];
+      if (k == 0 || (s & 3) == 2) iv = (rnd100(mkey ^ 0x7EC2u, k, 5) < 80) ? 0 : iv;   // the offbeat and the cell start lean on the root
+      ev.mel_at[n] = (uint8_t)(h * 3); ev.mel_semis[n] = (int8_t)(base + iv);
+      ev.mel_notes |= 1u << n;
+      if ((s & 3) == 2 ? rnd100(mkey ^ 0x7EC3u, s, 6) < 30 + adorno / 2 : rnd100(mkey ^ 0x7EC4u, s, 7) < adorno / 5) ev.mel_acc |= 1u << n;
       n++;
     }
     if (n) melody_semis = ev.mel_semis[n - 1];
