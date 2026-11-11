@@ -186,9 +186,9 @@ static const StyleDef STYLES[NUM_STYLES] = {
   // electronic, one 4/4 bar of 16 semicorcheas. A = kick, B = hats / percussion, no remates
   {"Techno",      8, 2, 1, POS(0, 4, 8, 12),   POS(2, 6, 10, 14),               14, F_ELEC|F_LINE16, H_ELEC, 1, H_ELEC},
   {"Acid",        8, 2, 1, POS(0, 4, 8, 12),   POS(2, 6, 10, 14),               14, F_ELEC|F_ACID|F_LINE16, H_ELEC, 3, H_ELEC},
-  {"Minimal",     8, 2, 1, POS(0, 4, 8, 12),   POS(3, 7, 11, 14),               14, F_ELEC, H_ELEC, 0, H_ELEC},
-  {"Dub techno",  8, 2, 1, POS(0, 4, 8, 12),   POS(3, 6, 10, 14),               14, F_ELEC, H_ELEC, 5, H_ELEC},
-  {"Electro",     8, 2, 1, POS(0, 7, 10),      POS(4, 12),                      12, F_ELEC, H_ELEC, 2, H_ELEC},
+  {"Minimal",     8, 2, 1, POS(0, 4, 8, 12),   POS(3, 7, 11, 14),               14, F_ELEC|F_LINE16, H_ELEC, 0, H_ELEC},
+  {"Dub techno",  8, 2, 1, POS(0, 4, 8, 12),   POS(3, 6, 10, 14),               14, F_ELEC|F_LINE16, H_ELEC, 5, H_ELEC},
+  {"Electro",     8, 2, 1, POS(0, 7, 10),      POS(4, 12),                      12, F_ELEC|F_LINE16, H_ELEC, 2, H_ELEC},
 };
 
 // how the melody moves in each style. Weights of each step (in scale degrees), the register it
@@ -198,29 +198,30 @@ struct MelProfile {
   uint8_t center;    // preferred position, in % of Rango
   uint8_t chord;     // % of accents that land on a chord tone (100 = always, every note)
   uint8_t motif;     // % of beats that repeat the figure of the previous beat
+  uint8_t rate;      // how often the melody plays on the rhythm's figure, % of the usual
 };
 static const MelProfile MELP[NUM_STYLES] = {
   // flamenco: stepwise and falling (cadencia andaluza), lots of repeated notes, narrow
-  {25, 38, 18, 9, 6, 3, 1,  45, 70, 15},   // Bulerias
-  {28, 40, 15, 9, 5, 2, 1,  40, 75, 15},   // Solea (more grave, more falling)
-  {20, 28, 28, 8, 9, 6, 1,  55, 70, 20},   // Alegrias (major, livelier, rises more)
-  {30, 40, 12, 10, 4, 3, 1, 35, 80, 10},   // Seguiriya (grave, lament)
-  {22, 32, 24, 9, 8, 4, 1,  50, 70, 25},   // Tangos
-  {18, 26, 26, 8, 8, 12, 2, 55, 85, 35},   // Sevillanas (sung couplets: leaps and repeats)
+  {25, 38, 18, 9, 6, 3, 1,  45, 70, 15, 100},   // Bulerias
+  {28, 40, 15, 9, 5, 2, 1,  40, 75, 15, 100},   // Solea (more grave, more falling)
+  {20, 28, 28, 8, 9, 6, 1,  55, 70, 20, 110},   // Alegrias (major, livelier, rises more)
+  {30, 40, 12, 10, 4, 3, 1, 35, 80, 10, 90},   // Seguiriya (grave, lament)
+  {22, 32, 24, 9, 8, 4, 1,  50, 70, 25, 110},   // Tangos
+  {18, 26, 26, 8, 8, 12, 2, 55, 85, 35, 110},   // Sevillanas (sung couplets: leaps and repeats)
   // andean: pentatonic, 4ths and 5ths, short figures that repeat
-  {22, 24, 20, 12, 10, 10, 2, 50, 75, 45}, // Sanjuanito
-  {12, 28, 18, 8, 10, 20, 4, 60, 90, 20},  // Pasillo (lyrical, wide, arpeggios then steps down)
-  {24, 22, 22, 12, 10, 8, 2, 45, 75, 40},  // Bomba
-  {28, 24, 20, 12, 8, 6, 2,  40, 70, 50},  // Yumbo (hypnotic, repetitive)
-  {22, 22, 22, 12, 12, 8, 2, 50, 75, 45},  // Capishca
-  {18, 32, 30, 7, 7, 5, 1,  55, 60, 20},   // Bossa (smooth, stepwise, tensions)
-  {12, 30, 20, 8, 10, 16, 4, 60, 90, 15},  // Bolero (romantic leaps, resolves down)
+  {22, 24, 20, 12, 10, 10, 2, 50, 75, 45, 170}, // Sanjuanito
+  {12, 28, 18, 8, 10, 20, 4, 60, 90, 20, 110},  // Pasillo (lyrical, wide, arpeggios then steps down)
+  {24, 22, 22, 12, 10, 8, 2, 45, 75, 40, 150},  // Bomba
+  {28, 24, 20, 12, 8, 6, 2,  40, 70, 50, 140},  // Yumbo (hypnotic, repetitive)
+  {22, 22, 22, 12, 12, 8, 2, 50, 75, 45, 150},  // Capishca
+  {18, 32, 30, 7, 7, 5, 1,  55, 60, 20, 120},   // Bossa (smooth, stepwise, tensions)
+  {12, 30, 20, 8, 10, 16, 4, 60, 90, 15, 100},  // Bolero (romantic leaps, resolves down)
   // electronic
-  {45, 17, 17, 6, 6, 4, 8,  25, 85, 60},   // Techno: riff
-  {30, 15, 15, 8, 8, 8, 16, 20, 70, 40},   // Acid: low 303 line with octave jumps
-  {60, 10, 10, 4, 4, 6, 6,  20, 95, 75},   // Minimal: almost a pedal, root and fifth
+  {45, 17, 17, 6, 6, 4, 8,  25, 85, 60, 100},   // Techno: riff
+  {30, 15, 15, 8, 8, 8, 16, 20, 70, 40, 100},   // Acid: low 303 line with octave jumps
+  {60, 10, 10, 4, 4, 6, 6,  20, 95, 75, 100},   // Minimal: almost a pedal, root and fifth
   {35, 12, 12, 10, 10, 15, 6, 35, 100, 60},// Dub techno: only chord tones
-  {30, 14, 14, 6, 6, 14, 16, 25, 85, 50},  // Electro: octaves and fifths
+  {30, 14, 14, 6, 6, 14, 16, 25, 85, 50, 100},  // Electro: octaves and fifths
 };
 #undef K
 
@@ -421,7 +422,7 @@ public:
 
     // short rhythm loops decide fills hit by hit inside the loop, so they repeat like a pattern
     const bool short_r = LoopTicks(loop_r) < d.len;
-    bool base = ((d.flags & F_CELLS) && !short_r) ? CellsTick(ev, a_on) : PrefTick(ev, s0);
+    bool base = (d.flags & F_ELEC) ? ElecTick(ev, s0) : ((d.flags & F_CELLS) && !short_r) ? CellsTick(ev, a_on) : PrefTick(ev, s0);
     const int nt = (tick + 1) % d.len;
     const bool next_a = d.a16 & (1ull << (nt * 2));
     if (!ev.fine_b && next_a && rnd100(rkey ^ 0xA7C1u, rp, 4) < adorno * 6 / 10) {
@@ -439,7 +440,7 @@ public:
     if (Acid()) { AcidLine(ev, s0); return ev; }
     if (Def().flags & F_LINE16) { TechnoLine(ev, s0); return ev; }
     bool mel = a_on || a_off;
-    if (!mel && base) mel = rnd100(mkey ^ 0xABCDu, mp, 8) < (notas < 50 ? notas * 70 / 100 : 35 + (notas - 50) * 13 / 10);
+    if (!mel && base) mel = rnd100(mkey ^ 0xABCDu, mp, 8) < (notas < 50 ? notas * 70 / 100 : 35 + (notas - 50) * 13 / 10) * MP().rate / 100;
     if (!mel && !base && notas > 50) mel = rnd100(mkey ^ 0xABCEu, mp, 9) < (notas - 50) * 8 / 10;
     if (mel) Melody(ev, a_on || a_off);
     return ev;
@@ -537,6 +538,26 @@ private:
     int off = tick - AccentTick(g); if (off < 0) off += Def().len;
     const bool base = CellFor(g) & (1u << off);
     if (base) { ev.fine_b |= 1u; ev.vel_b[0] = 80 + rnd100(rkey ^ 0x0F0Fu, rp, 2) / 5; Doubling(ev); }
+    return base;
+  }
+  // electronic styles: output B is a steady hat (or the snare in Electro); Densidad adds 16th ghost hits
+  bool ElecTick(Event &ev, int s0) {
+    const StyleDef &d = Def();
+    const bool electro = active_style == S_ELECTRO;
+    bool base = false;
+    for (int h = 0; h < 2; ++h) {
+      const int s = s0 + h, pos = s & 15;
+      if (d.a16 & (1ull << s)) continue;
+      const bool main = electro ? (d.pref16 & (1ull << s)) != 0 : (pos & 3) == 2;
+      int chance = main ? (density >= 10 ? 100 : 0) : (pos & 1) ? density * 6 / 10 - 10 : density / 3 - 5;
+      if (electro && !main) chance = (pos & 1) ? density / 2 - 5 : density / 4;
+      if (rnd100(rkey ^ 0xE1E1u, rp * 2 + h, 1) < chance) {
+        const int k = h * 3;
+        ev.fine_b |= 1u << k;
+        ev.vel_b[k] = main ? 100 : 45 + rnd100(rkey, rp * 2 + h, 3) / 4;
+        if (h == 0) base = true;
+      }
+    }
     return base;
   }
   bool PrefTick(Event &ev, int s0) {
@@ -814,16 +835,24 @@ private:
     ev.mel_n = (uint8_t)n; ev.mel_main = 0;
   }
 
-  // Techno: a bass lead on the semicorcheas. Each melody seed is a riff: a rhythm figure that
-  // dodges the kick (rolling, offbeat, gallop...) and a short cell of pitches around the root
-  // (root, octave, fifth, minor 3rd, minor 7th) that repeats every beat or two.
+  // Semicorchea lines of the electronic styles. Each melody seed is a riff: a rhythm figure and a
+  // short cell of pitches around the root that repeats every beat or two.
+  //  Techno: bass lead that dodges the kick (offbeat, gallop, rolling)
+  //  Minimal: few short syncopated notes, mostly the root
+  //  Electro: broken 808-style bass, octave jumps
+  //  Dub techno: the chord stab, its notes on the stab hits
   // Densidad picks busier figures, Notas adds or removes notes, Adorno = accents.
+  struct LineDef { uint16_t fig[8]; int8_t iv[8]; uint8_t root_lean; };
   void TechnoLine(Event &ev, int s0) {
-    static const uint16_t FIG[8] = {0x4444, 0xAAAA, 0x6666, 0xCCCC, 0x4E4E, 0xAEAE, 0xE6E6, 0xEEEE};   // bit i = semicorchea i
-    static const int8_t IV[8] = {0, 0, 0, 12, 0, 7, 10, 3};
-    int fig_i = (density * 6 / 100) + (int)(hash(mkey, 0x7EC, 1) % 3) - 1;
+    static const LineDef TECHNO = {{0x4444, 0xAAAA, 0x6666, 0xCCCC, 0x4E4E, 0xAEAE, 0xE6E6, 0xEEEE}, {0, 0, 0, 12, 0, 7, 10, 3}, 80};
+    static const LineDef MINIMAL = {{0x0404, 0x0808, 0x4040, 0x4444, 0x0848, 0x4848, 0x8484, 0x4C4C}, {0, 0, 0, 0, 7, 12, 0, 10}, 90};
+    static const LineDef ELECTRO = {{0x0481, 0x0909, 0x1449, 0x4949, 0x2449, 0x4C4D, 0x5249, 0x6D49}, {0, 0, 12, 12, 0, 7, 10, 3}, 60};
+    const int st = active_style;
+    if (st == S_DUB) { DubLine(ev, s0); return; }
+    const LineDef &L = st == S_MINIMAL ? MINIMAL : st == S_ELECTRO ? ELECTRO : TECHNO;
+    int fig_i = (density * (st == S_MINIMAL ? 8 : 6) / 100) + (int)(hash(mkey, 0x7EC, 1) % 3) - 1;
     fig_i = fig_i < 0 ? 0 : fig_i > 7 ? 7 : fig_i;
-    const uint16_t fig = FIG[fig_i];
+    const uint16_t fig = L.fig[fig_i];
     const int cell = (hash(mkey, 0x7EC, 2) & 1) ? 4 : 8;           // the pitch cell repeats every beat or every 2 beats
     const int base = ((RootSemis() % 12) + 12) % 12;
     int n = 0;
@@ -831,13 +860,34 @@ private:
       const int s = s0 + h;
       const bool in_fig = fig & (1u << (s & 15));
       int chance = in_fig ? 70 + notas * 30 / 100 : (notas > 60 ? (notas - 60) * 3 / 4 : 0);
+      if (st == S_MINIMAL && !in_fig) chance /= 3;
       if (rnd100(mkey ^ 0x7EC0u, s, 3) >= chance) continue;
       const int k = s % cell;
-      int iv = IV[hash(mkey ^ 0x7EC1u, k, 4) % 8];
-      if (k == 0 || (s & 3) == 2) iv = (rnd100(mkey ^ 0x7EC2u, k, 5) < 80) ? 0 : iv;   // the offbeat and the cell start lean on the root
+      int iv = L.iv[hash(mkey ^ 0x7EC1u, k, 4) % 8];
+      if (k == 0 || (s & 3) == 2) iv = (rnd100(mkey ^ 0x7EC2u, k, 5) < L.root_lean) ? 0 : iv;   // the cell start and the offbeat lean on the root
       ev.mel_at[n] = (uint8_t)(h * 3); ev.mel_semis[n] = (int8_t)(base + iv);
       ev.mel_notes |= 1u << n;
       if ((s & 3) == 2 ? rnd100(mkey ^ 0x7EC3u, s, 6) < 30 + adorno / 2 : rnd100(mkey ^ 0x7EC4u, s, 7) < adorno / 5) ev.mel_acc |= 1u << n;
+      n++;
+    }
+    if (n) melody_semis = ev.mel_semis[n - 1];
+    ev.mel_n = (uint8_t)n; ev.mel_main = 0;
+  }
+  // Dub techno: the melody plays the chord stab, a chord tone on each stab hit (with the 9th now and then)
+  void DubLine(Event &ev, int s0) {
+    const StyleDef &d = Def();
+    int8_t iv[4]; const int nt = ChordTones(iv);
+    const int base = ((RootSemis() % 12) + 12) % 12 + 12;
+    int n = 0;
+    for (int h = 0; h < 2; ++h) {
+      const int s = s0 + h;
+      const bool stab = d.pref16 & (1ull << (s & 15));
+      const int chance = stab ? 60 + notas * 40 / 100 : (notas > 70 ? (notas - 70) / 2 : 0);
+      if (rnd100(mkey ^ 0xD0B0u, s, 3) >= chance) continue;
+      const int r = (int)(hash(mkey ^ 0xD0B1u, s % 8, 4) % 10);
+      const int semis = r < 8 ? base + iv[r % (nt > 0 ? nt : 1)] : base + 14;     // a chord tone, or the 9th
+      ev.mel_at[n] = (uint8_t)(h * 3); ev.mel_semis[n] = (int8_t)semis; ev.mel_notes |= 1u << n;
+      if (stab && rnd100(mkey ^ 0xD0B2u, s, 6) < adorno) ev.mel_acc |= 1u << n;
       n++;
     }
     if (n) melody_semis = ev.mel_semis[n - 1];
