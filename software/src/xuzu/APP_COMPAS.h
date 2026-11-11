@@ -190,7 +190,7 @@ private:
     compas::NUM_LOOPS - 1, compas::NUM_LOOPS - 1, 3, 100, compas::NUM_LOCKS - 1, 7, 7, 1,
     1, 100, 21, 6, 6, 1, 2, 3,
     5, 16, 16, 15, 3, 3, 100, 2,
-    2, 4, 1,
+    2, 5, 1,
     1, 1, 1, NUM_CV_DEST - 1, NUM_CV_DEST - 1, NUM_CV_DEST - 1, 1,
     99, xuzu::NUM_PRESETS - 1, 1, 1, 1};
   static constexpr int STEP_[NUM_PARAMS] = {
@@ -234,7 +234,8 @@ private:
     uint8_t fine_a, vel_a, fine_b, vel_b[compas::FINE], vmask[compas::NUM_EXTRA_VOICES], vvel[compas::NUM_EXTRA_VOICES];
     uint8_t comp, comp_vel, push, flags;
   };
-  struct MStep { uint8_t mel_n, mel_main, mel_at[4]; int8_t mel_semis[4]; int8_t root; uint8_t notes, acc, tie; };
+  struct MStep { uint8_t mel_n, mel_main, mel_at[4]; int8_t mel_semis[4]; int8_t root; uint8_t notes, acc, tie;
+                 uint8_t bass_n, bass_at[2], bass_acc; int8_t bass_semis[2]; };
   enum { RF_STRUM = 1, RF_REMATE = 2, RF_BURST = 4, RF_BEAT = 8, RF_CYCLE = 16, RF_CHORD = 32 };
   static constexpr int HIST = 192;   // 8 cycles of the longest style (24 corcheas)
   RStep hist_r[HIST];
@@ -244,7 +245,7 @@ private:
   static constexpr uint8_t VEL_NUM[8] = {1, 2, 3, 1, 3, 2, 3, 4};
   static constexpr uint8_t VEL_DEN[8] = {2, 3, 4, 1, 2, 1, 1, 1};
 
-  enum { Q_A = 1, Q_C, Q_VOICE, Q_OFF, Q_MEL, Q_MELORN, Q_CHORD, Q_CNOTE, Q_TICK, Q_BURST, Q_GATE };
+  enum { Q_A = 1, Q_C, Q_VOICE, Q_OFF, Q_MEL, Q_MELORN, Q_CHORD, Q_CNOTE, Q_TICK, Q_BURST, Q_GATE, Q_BASS };
   enum { MF_ACC = 0x100, MF_TIE = 0x200 };   // flags on a Q_MEL argument
   static constexpr int QN = 96;
   int q_time[QN] = {0};
@@ -376,6 +377,7 @@ private:
         case Q_VOICE: Drum(VOICE_NOTE[q_arg[i]], q_vel[i]); break;
         case Q_OFF: if (p[MIDI]) usbMIDI.sendNoteOff(q_arg[i] & 0x7F, 0, q_arg[i] >> 8); break;
         case Q_MEL: SetMelody((int8_t)(q_arg[i] & 0xFF), q_vel[i], true, q_arg[i] & MF_TIE); break;
+        case Q_BASS: Bass(q_arg[i], q_vel[i]); break;
         case Q_GATE: gate_d = q_arg[i]; if (q_vel[i]) acc_d = q_arg[i]; break;
         case Q_MELORN: SetMelody(q_arg[i], q_vel[i], false); break;
         case Q_CHORD: ChordHit(q_vel[i], q_arg[i]); break;
@@ -426,7 +428,8 @@ private:
     if (mclk_step == 0) mclk_left = 0;
     mclk_timer = mclk_step > 0 ? mclk_step : 1;
   }
-  int BassMode() const { return (p[BASS] == 0 && p[OUT_B] == 1) ? 1 : p[BASS]; }
+  bool StyleBass() const { return (engine.Def().flags & compas::F_LINE16) && !(engine.Def().flags & compas::F_ACID); }
+  int BassMode() const { return (p[BASS] == 0 && p[OUT_B] == 1) ? (StyleBass() ? 5 : 1) : (p[BASS] == 5 && !StyleBass() ? 1 : p[BASS]); }
   void Bass(int semis, uint8_t vel) {
     bass_semis = semis;
     if (!p[MIDI] || p[BASS] == 0) return;
@@ -456,6 +459,8 @@ private:
     for (int i = 0; i < 4; ++i) { ms.mel_at[i] = ev.mel_at[i]; ms.mel_semis[i] = ev.mel_semis[i]; }
     ms.notes = ev.mel_notes | ((engine.Def().flags & compas::F_LINE16) ? 0x80 : 0);   // bit 7: a semicorchea line
     ms.acc = ev.mel_acc; ms.tie = ev.mel_tie;
+    ms.bass_n = ev.bass_n; ms.bass_acc = ev.bass_acc;
+    for (int i = 0; i < 2; ++i) { ms.bass_at[i] = ev.bass_at[i]; ms.bass_semis[i] = ev.bass_semis[i]; }
 
     UpdateLayer(0, FreezeR(), engine.LoopTicks(engine.loop_r));
     UpdateLayer(1, FreezeM(), engine.LoopTicks(engine.loop_m));
@@ -548,6 +553,15 @@ private:
     const bool live = (num == 1 && den == 1 && delay0 == 0 && k_only == 0 && !layer[1].frozen);
     int shift = 0;
     if (!live && p[SEGUIR]) { shift = ((engine.RootSemis() - ms.root) % 12 + 12) % 12; if (shift > 6) shift -= 12; }
+    // the style's own bass line (electronic styles), when Bajo is "Linea" (or B is the bass)
+    if (BassMode() == 5) for (int i = 0; i < ms.bass_n; ++i) {
+      const int k = ms.bass_at[i];
+      if (!live && k != k_only) continue;
+      if (!timed && k > 0 && live) continue;
+      const int d = live ? (timed ? tp * k / compas::FINE : 0) : delay0;
+      const uint8_t vel = (ms.bass_acc >> i) & 1 ? 120 : 95;
+      if (d == 0) Bass(ms.bass_semis[i] + shift, vel); else Enqueue(d, Q_BASS, (int16_t)(ms.bass_semis[i] + shift), vel);
+    }
     for (int i = 0; i < ms.mel_n; ++i) {
       const int k = ms.mel_at[i];
       if (!live && k != k_only) continue;
@@ -748,7 +762,7 @@ private:
     static const char *const CURVE[4] = {"Plana", "Sube", "Baja", "Campana"};
     static const char *const BOUT[3] = {"Salida C", "MIDI", "Ambos"};
     static const char *const CHORD[3] = {"Con ritmo", "Sostenidos", "Arpegio"};
-    static const char *const BASSM[5] = {"No", "Raiz", "Octavas", "Contratiempo", "Arpegio"};
+    static const char *const BASSM[6] = {"No", "Raiz", "Octavas", "Contratiempo", "Arpegio", "Linea estilo"};
     static const char *const VELS[8] = {"/2", "x2/3", "x3/4", "x1", "x1.5", "x2", "x3", "x4"};
     static const char *const CVD[NUM_CV_DEST] = {"Nada", "Estilo", "Armonia", "Progresion", "Densidad", "Soltura",
       "Intensidad", "Loop congela", "Vel. loop", "Loop ritmo", "Loop melodia", "Adorno", "Notas", "Rearmonizar", "Rafaga", "Preset"};

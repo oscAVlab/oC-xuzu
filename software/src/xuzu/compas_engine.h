@@ -252,6 +252,10 @@ struct Event {
   uint8_t mel_notes = 0;              // entries that are real notes (bit i = entry i): CV + gate
   uint8_t mel_acc = 0;                // accented notes (acid)
   uint8_t mel_tie = 0;                // notes tied into the next one: the next note slides (acid)
+  uint8_t bass_n = 0;                 // electronic styles: the bass line of this corchea (semicorchea 0 / 3)
+  uint8_t bass_at[2] = {0, 0};
+  int8_t bass_semis[2] = {0, 0};
+  uint8_t bass_acc = 0;
   bool new_chord = false;
   bool remate = false;
   bool beat_start = false;            // first corchea of a beat
@@ -409,6 +413,7 @@ public:
     mp = g % LoopTicks(loop_m);
     rkey = r_seed[rseg] ^ (remate_cycle ? 0x5EA1u : 0u);
     mkey = m_seed[mseg];
+    bkey = hash(mkey, 0xBA55u, 0);
     const int rtick = d.remate16 / 2;
     if (remate_req && !remate_cycle && tick <= rtick) { remate_cycle = true; remate_req = false; }
     if (remate_cycle && tick > rtick) return ev;
@@ -438,7 +443,7 @@ public:
     Comping(ev, s0, a_on || a_off);
 
     if (Acid()) { AcidLine(ev, s0); return ev; }
-    if (Def().flags & F_LINE16) { TechnoLine(ev, s0); return ev; }
+    if (Def().flags & F_LINE16) { BassLine(ev, s0); LeadLine(ev, s0); return ev; }
     bool mel = a_on || a_off;
     if (!mel && base) mel = rnd100(mkey ^ 0xABCDu, mp, 8) < (notas < 50 ? notas * 70 / 100 : 35 + (notas - 50) * 13 / 10) * MP().rate / 100;
     if (!mel && !base && notas > 50) mel = rnd100(mkey ^ 0xABCEu, mp, 9) < (notas - 50) * 8 / 10;
@@ -453,7 +458,7 @@ private:
   int8_t m_pos[MAX_LOOP] = {0};
   uint8_t r_valid = 0, m_valid = 0;
   bool h_valid = false;
-  uint32_t entropy = 1, rkey = 0, mkey = 0;
+  uint32_t entropy = 1, rkey = 0, mkey = 0, bkey = 0;
   int32_t g = -1;          // corcheas since the start
   int rp = 0, mp = 0;      // position inside the rhythm / melody loop
   int chord_count = 0;
@@ -843,17 +848,17 @@ private:
   //  Dub techno: the chord stab, its notes on the stab hits
   // Densidad picks busier figures, Notas adds or removes notes, Adorno = accents.
   struct LineDef { uint16_t fig[8]; int8_t iv[8]; uint8_t root_lean; };
-  void TechnoLine(Event &ev, int s0) {
+  void BassLine(Event &ev, int s0) {
     static const LineDef TECHNO = {{0x4444, 0xAAAA, 0x6666, 0xCCCC, 0x4E4E, 0xAEAE, 0xE6E6, 0xEEEE}, {0, 0, 0, 12, 0, 7, 10, 3}, 80};
     static const LineDef MINIMAL = {{0x0404, 0x0808, 0x4040, 0x4444, 0x0848, 0x4848, 0x8484, 0x4C4C}, {0, 0, 0, 0, 7, 12, 0, 10}, 90};
     static const LineDef ELECTRO = {{0x0481, 0x0909, 0x1449, 0x4949, 0x2449, 0x4C4D, 0x5249, 0x6D49}, {0, 0, 12, 12, 0, 7, 10, 3}, 60};
     const int st = active_style;
-    if (st == S_DUB) { DubLine(ev, s0); return; }
+    if (st == S_DUB) { DubBass(ev, s0); return; }
     const LineDef &L = st == S_MINIMAL ? MINIMAL : st == S_ELECTRO ? ELECTRO : TECHNO;
-    int fig_i = (density * (st == S_MINIMAL ? 8 : 6) / 100) + (int)(hash(mkey, 0x7EC, 1) % 3) - 1;
+    int fig_i = (density * (st == S_MINIMAL ? 8 : 6) / 100) + (int)(hash(bkey, 0x7EC, 1) % 3) - 1;
     fig_i = fig_i < 0 ? 0 : fig_i > 7 ? 7 : fig_i;
     const uint16_t fig = L.fig[fig_i];
-    const int cell = (hash(mkey, 0x7EC, 2) & 1) ? 4 : 8;           // the pitch cell repeats every beat or every 2 beats
+    const int cell = (hash(bkey, 0x7EC, 2) & 1) ? 4 : 8;           // the pitch cell repeats every beat or every 2 beats
     const int base = ((RootSemis() % 12) + 12) % 12;
     int n = 0;
     for (int h = 0; h < 2; ++h) {
@@ -861,19 +866,72 @@ private:
       const bool in_fig = fig & (1u << (s & 15));
       int chance = in_fig ? 70 + notas * 30 / 100 : (notas > 60 ? (notas - 60) * 3 / 4 : 0);
       if (st == S_MINIMAL && !in_fig) chance /= 3;
-      if (rnd100(mkey ^ 0x7EC0u, s, 3) >= chance) continue;
+      if (rnd100(bkey ^ 0x7EC0u, s, 3) >= chance) continue;
       const int k = s % cell;
-      int iv = L.iv[hash(mkey ^ 0x7EC1u, k, 4) % 8];
-      if (k == 0 || (s & 3) == 2) iv = (rnd100(mkey ^ 0x7EC2u, k, 5) < L.root_lean) ? 0 : iv;   // the cell start and the offbeat lean on the root
-      ev.mel_at[n] = (uint8_t)(h * 3); ev.mel_semis[n] = (int8_t)(base + iv);
-      ev.mel_notes |= 1u << n;
-      if ((s & 3) == 2 ? rnd100(mkey ^ 0x7EC3u, s, 6) < 30 + adorno / 2 : rnd100(mkey ^ 0x7EC4u, s, 7) < adorno / 5) ev.mel_acc |= 1u << n;
+      int iv = L.iv[hash(bkey ^ 0x7EC1u, k, 4) % 8];
+      if (k == 0 || (s & 3) == 2) iv = (rnd100(bkey ^ 0x7EC2u, k, 5) < L.root_lean) ? 0 : iv;   // the cell start and the offbeat lean on the root
+      ev.bass_at[n] = (uint8_t)(h * 3); ev.bass_semis[n] = (int8_t)(base + iv);
+      if ((s & 3) == 2 ? rnd100(bkey ^ 0x7EC3u, s, 6) < 30 + adorno / 2 : rnd100(bkey ^ 0x7EC4u, s, 7) < adorno / 5) ev.bass_acc |= 1u << n;
+      n++;
+    }
+    ev.bass_n = (uint8_t)n;
+  }
+  // Dub techno: the melody plays the chord stab, a chord tone on each stab hit (with the 9th now and then)
+  // Dub techno bass: a deep root on the 1 and some syncopated pushes, root / fifth / octave
+  void DubBass(Event &ev, int s0) {
+    static const uint16_t FIG[4] = {0x0101, 0x0901, 0x0111, 0x4101};
+    const uint16_t fig = FIG[hash(bkey, 0xDB, 1) % 4];
+    const int base = ((RootSemis() % 12) + 12) % 12;
+    int n = 0;
+    for (int h = 0; h < 2; ++h) {
+      const int s = s0 + h;
+      if (!(fig & (1u << (s & 15))) || rnd100(bkey ^ 0xDB0u, s, 2) >= 80 + notas / 5) continue;
+      const int r = rnd100(bkey ^ 0xDB1u, s & 7, 3);
+      ev.bass_at[n] = (uint8_t)(h * 3); ev.bass_semis[n] = (int8_t)(base + ((s & 15) == 0 || r < 70 ? 0 : r < 85 ? 7 : 12));
+      n++;
+    }
+    ev.bass_n = (uint8_t)n;
+  }
+  // the lead of the electronic styles, an octave over the bass. Its own rhythm figure and a short
+  // cell of notes (chord tones and minor pentatonic) that cycles over the figure, so it turns around
+  // the bar like a hypnotic synth riff.
+  //  Techno: syncopated 3+3+2 riffs.  Minimal: a few blips.  Electro: arpeggios.  Dub: the chord stab.
+  void LeadLine(Event &ev, int s0) {
+    const int st = active_style;
+    if (st == S_DUB) { DubLine(ev, s0); return; }
+    static const uint16_t TECHNO[8] = {0x0410, 0x2222, 0x2492, 0x9249, 0x0924, 0x4924, 0xA4A4, 0xB6DB};
+    static const uint16_t MINIMAL[8] = {0x0010, 0x0400, 0x0410, 0x1008, 0x0084, 0x2010, 0x0441, 0x4210};
+    static const uint16_t ELECTRO[8] = {0x1111, 0x5555, 0x5A5A, 0x6DB6, 0x7777, 0xAAAA, 0xEEEE, 0xFFFF};
+    const uint16_t *F = st == S_MINIMAL ? MINIMAL : st == S_ELECTRO ? ELECTRO : TECHNO;
+    int fi = density * 7 / 100 + (int)(hash(mkey, 0x1EAD, 1) % 3) - 1;
+    fi = fi < 0 ? 0 : fi > 7 ? 7 : fi;
+    const uint16_t fig = F[fi];
+    // the cell: 3 to 5 notes
+    int8_t iv[4]; const int nt = ChordTones(iv);
+    static const int8_t PENT[5] = {0, 3, 5, 7, 10};
+    const int cell_len = 3 + (int)(hash(mkey, 0x1EAD, 2) % 3);
+    const int base = ((RootSemis() % 12) + 12) % 12 + 12;
+    int n = 0;
+    for (int h = 0; h < 2; ++h) {
+      const int s = s0 + h, pos = s & 15;
+      if (!(fig & (1u << pos))) continue;
+      if (rnd100(mkey ^ 0x1EA0u, pos, 3) >= 55 + notas * 45 / 100) continue;
+      // which note of the cell: count the figure's hits before this one, so the cell cycles over the figure
+      int k = 0; for (int j = 0; j < pos; ++j) k += (fig >> j) & 1;
+      int semis;
+      if (st == S_ELECTRO) {                                   // arpeggio up the chord, over 2 octaves
+        const int m = k % (nt * 2); semis = base + iv[m % nt] + 12 * (m / nt);
+      } else {
+        const uint32_t r = hash(mkey ^ 0x1EA1u, k % cell_len, 4);
+        semis = base + ((r & 3) ? iv[(r >> 2) % nt] : PENT[(r >> 4) % 5]) + ((r >> 8) % 6 == 0 ? 12 : 0);
+      }
+      ev.mel_at[n] = (uint8_t)(h * 3); ev.mel_semis[n] = (int8_t)semis; ev.mel_notes |= 1u << n;
+      if (rnd100(mkey ^ 0x1EA2u, pos, 5) < adorno / 2) ev.mel_acc |= 1u << n;
       n++;
     }
     if (n) melody_semis = ev.mel_semis[n - 1];
     ev.mel_n = (uint8_t)n; ev.mel_main = 0;
   }
-  // Dub techno: the melody plays the chord stab, a chord tone on each stab hit (with the 9th now and then)
   void DubLine(Event &ev, int s0) {
     const StyleDef &d = Def();
     int8_t iv[4]; const int nt = ChordTones(iv);

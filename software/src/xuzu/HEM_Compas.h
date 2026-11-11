@@ -1,6 +1,6 @@
 // Compas applet (xuzu v4.18): a Compas of its own in half a screen, with all its settings.
 // TR1 clock (x4 or x2 of the Pam)  TR2 reset   CV1 / CV2 assignable (Dens / Solt by default)
-// Outputs: Trig+Mel (default), A+B, C+D, Acen+Rell, Raiz+Mel
+// Outputs: Trig+Mel (default), A+B, C+D, Acen+Rell, Raiz+Mel (in the electronic styles the root follows their bass line)
 // MIDI like the app: ch10 percussion, ch1 melody, ch2 chords, ch3 bass
 #pragma once
 #include "xuzu/compas_engine.h"
@@ -149,10 +149,10 @@ private:
   int cv_dest[2] = {CV_DENS, CV_SOLT};
   int transp = 0, oct_eff = 0; bool nuevo_hi = false;
   int since = 1000000, count = 0, half = 0, last_tp = 1000, flash = 0;
-  int8_t mel_note = -1, bass_note = -1;
+  int8_t mel_note = -1, bass_note = -1; int bass_semis = 0;
   int mel_semis = 12, glide_left = 0, glide_len = 1, glide_from = 0; bool slide_next = false;
   int8_t chord_on[4] = {-1, -1, -1, -1};
-  enum { K_ACC = 1, K_FILL, K_MEL, K_OFF };
+  enum { K_ACC = 1, K_FILL, K_MEL, K_OFF, K_BASS };
   static constexpr int QN = 24;
   int q_t[QN] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
   uint8_t q_k[QN]; int16_t q_v[QN]; uint8_t q_a[QN];
@@ -212,7 +212,9 @@ private:
       const bool note = (ev.mel_notes >> i) & 1, acc = (ev.mel_acc >> i) & 1, tie = (ev.mel_tie >> i) & 1;
       Enq(tp * ev.mel_at[i] / compas::FINE, K_MEL, (int16_t)((ev.mel_semis[i] & 0xFF) | (note ? 0x100 : 0) | (tie ? 0x200 : 0)), acc ? 122 : note ? 95 : 70);
     }
-    if (midi && (ev.fine_a & 1u)) {   // bass: the root on every accent, chords with the rhythm
+    if (StyleBass()) {                // electronic styles: their own bass line
+      for (int i = 0; i < ev.bass_n; ++i) Enq(tp * ev.bass_at[i] / compas::FINE, K_BASS, ev.bass_semis[i], (ev.bass_acc >> i) & 1 ? 120 : 95);
+    } else if (midi && (ev.fine_a & 1u)) {   // bass: the root on every accent, chords with the rhythm
       if (bass_note >= 0) usbMIDI.sendNoteOff(bass_note, 0, 3);
       bass_note = (int8_t)constrain(40 + engine.RootSemis() % 12 + transp + 12 * oct_eff, 0, 127); usbMIDI.sendNoteOn(bass_note, 100, 3);
     }
@@ -225,6 +227,7 @@ private:
     const int root = 52 + ((engine.RootSemis() % 12) + 12) % 12 + transp;
     for (int i = 0; i < n; ++i) { chord_on[i] = (int8_t)constrain(root + iv[i], 0, 127); usbMIDI.sendNoteOn(chord_on[i], vel, 2); }
   }
+  bool StyleBass() const { return (engine.Def().flags & compas::F_LINE16) && !(engine.Def().flags & compas::F_ACID); }
   bool MelOut() const { return outs == O_TRIGMEL || outs == O_AB || outs == O_ROOTMEL; }
   int Shift() const { return (transp + 12 * oct_eff) * 128; }
   int MelCV() const { const int to = mel_semis * 128; return Shift() + (glide_left > 0 ? to + (glide_from - to) * glide_left / glide_len : to); }
@@ -253,8 +256,12 @@ private:
         break;
       }
       case K_OFF: Drum(v, a); break;
+      case K_BASS:
+        bass_semis = v;
+        if (midi) { if (bass_note >= 0) usbMIDI.sendNoteOff(bass_note, 0, 3); bass_note = (int8_t)constrain(40 + v + transp + 12 * oct_eff, 0, 127); usbMIDI.sendNoteOn(bass_note, a, 3); }
+        break;
     }
     if (outs == O_CD) Out(1, engine.RootSemis() * 128 + Shift());
-    if (outs == O_ROOTMEL) Out(0, engine.RootSemis() * 128 + Shift());
+    if (outs == O_ROOTMEL) Out(0, (StyleBass() ? bass_semis : engine.RootSemis()) * 128 + Shift());   // electronic: the bass line
   }
 };
