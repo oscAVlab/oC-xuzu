@@ -9,7 +9,7 @@
 
 class EuclX4 : public XuzuListApplet {
 public:
-  enum Prm { P_TRACK, P_HITS, P_STEPS, P_LEN, P_ROT, P_RATIO, P_PROB, P_AZAR, P_BURST, P_MUTE,
+  enum Prm { P_TRACK, P_HITS, P_STEPS, P_LEN, P_ROT, P_RATIO, P_PROB, P_AZAR, P_BURST, P_MUTE, P_TIPO, P_MEL, P_HSTYLE,
              P_CVTRACK, P_OUT1, P_PRESET, P_CV1, P_CV1T, P_CV2, P_CV2T, NUM_P };
   enum CvDest { CV_NADA = 0, CV_HITS, CV_ROT, CV_STEPS, CV_LEN, CV_PROB, CV_AZAR, CV_RATIO, CV_BURST, CV_TONO,
                 CV_MUTE, CV_FILL, CV_PRESET, NUM_CV };
@@ -28,6 +28,7 @@ public:
       xuzu::eucl_seen_tick = now;
       e.ClearHM();
       for (int h = 0; h < 2; ++h) Sum(e, mod[h]);
+      e.ext = xuzu::Recent(xuzu::compas_seen_tick, now) ? &xuzu::compas_harm : nullptr;   // a Compas applet: follow it
       if (!xuzu::Recent(xuzu::brains_seen_tick, now)) {
         e.EndTick();          // clears the flags of the previous tick; the other side reads this tick's after us
         if (since < 1000000) since++;
@@ -91,7 +92,7 @@ protected:
   }
   int NumParams() { return NUM_P; }
   const char *Name(int i) {
-    static const char *const N[NUM_P] = {"Pista", "Golpe", "Pasos", "Largo", "Rotac", "Ratio", "Prob", "Azar", "Rafag", "Mute",
+    static const char *const N[NUM_P] = {"Pista", "Golpe", "Pasos", "Largo", "Rotac", "Ratio", "Prob", "Azar", "Rafag", "Mute", "Tipo", "Melod", "Armon",
                                          "CVpis", "Sal 1", "Prest", "CV1", "CV1 p", "CV2", "CV2 p"};
     return N[i];
   }
@@ -109,6 +110,9 @@ protected:
       case P_AZAR: xuzu::Itoa(t.azar, b); break;
       case P_BURST: xuzu::Itoa(t.burst, b); break;
       case P_MUTE: xuzu::Copy(b, e.mute[track] ? "Si" : "No", m); break;
+      case P_TIPO: xuzu::Copy(b, t.nota ? "Nota" : (full ? "Percusion" : "Perc"), m); break;
+      case P_MEL: xuzu::Copy(b, full ? euclid4::MEL_NAMES[t.mel] : euclid4::MEL_SHORT[t.mel], m); break;
+      case P_HSTYLE: if (e.ext) xuzu::Copy(b, full ? "= Compas" : "=Comp", m); else xuzu::Copy(b, compas::STYLES[e.h_style].name, m); break;
       case P_CVTRACK: xuzu::Copy(b, "T", 1); xuzu::Itoa(cv_track + 1, b + 1); break;
       case P_OUT1: { static const char *const O[3] = {"Auto", "Trig", "Gate"}; xuzu::Copy(b, O[out1], m); break; }
       case P_PRESET: if (!preset) xuzu::Copy(b, "---", m); else { xuzu::Itoa(preset, b); if (full) { const int l = strlen(b); xuzu::Copy(b + l, " cargado", 9 - l); } } break;
@@ -130,6 +134,9 @@ protected:
       case P_AZAR: t.azar = constrain(t.azar + dir * 5, 0, 100); break;
       case P_BURST: t.burst = constrain(t.burst + dir, 1, 8); break;
       case P_MUTE: e.mute[track] = dir > 0; break;
+      case P_TIPO: t.nota = dir > 0; break;
+      case P_MEL: t.mel = constrain(t.mel + dir, 0, euclid4::NUM_MEL - 1); break;
+      case P_HSTYLE: e.h_style = (uint8_t)constrain(e.h_style + dir, 0, compas::NUM_STYLES - 1); break;   // its own Compas, when no Compas applet
       case P_CVTRACK: cv_track = constrain(cv_track + dir, 0, 3); break;
       case P_OUT1: out1 = constrain(out1 + dir, 0, 2); break;
       case P_PRESET: preset = constrain(preset + dir, 0, 16); if (preset > 0) xuzu::EuclidLoadPreset(preset - 1); break;

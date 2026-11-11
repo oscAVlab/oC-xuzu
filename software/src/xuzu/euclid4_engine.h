@@ -5,6 +5,8 @@
 #include <Arduino.h>
 #include <stdint.h>
 #include <string.h>
+#include "xuzu/compas_engine.h"
+#include "xuzu/harm_share.h"
 
 namespace euclid4 {
 
@@ -32,8 +34,11 @@ static constexpr int NUM_CHORDS = 7;
 static const int8_t CHORDS[NUM_CHORDS][4] = {{0, -1, -1, -1}, {0, 7, -1, -1}, {0, 7, 12, -1}, {0, 3, 7, -1}, {0, 4, 7, -1}, {0, 3, 7, 10}, {0, 5, 7, -1}};
 static const char *const CHORD_NAMES[NUM_CHORDS] = {"Una nota", "Quinta", "5a+8a", "Menor", "Mayor", "m7", "Sus4"};
 
-enum MelMode : uint8_t { M_CURSOR = 0, M_AZAR, M_ESCALA, M_FRASE };
-static const char *const MEL_NAMES[4] = {"Cursor", "Azar", "Escala", "Frase (loop)"};
+enum MelMode : uint8_t { M_CURSOR = 0, M_AZAR, M_ESCALA, M_FRASE, M_ACORDE, M_COMPAS, NUM_MEL };
+static const char *const MEL_NAMES[NUM_MEL] = {"Cursor", "Azar", "Escala", "Frase (loop)", "Acorde", "Mel. Compas"};
+static const char *const MEL_SHORT[NUM_MEL] = {"Curs", "Azar", "Escal", "Frase", "Acord", "M.Com"};
+// Compas pitches have their 0 on E: MIDI note of Compas semitone s = 52 + s, our MIDI 48 = 0 V
+static constexpr int COMPAS_MIDI_SHIFT = 4;
 
 // ---------------------------------------------------------------- one track
 struct __attribute__((packed)) Track {
@@ -149,6 +154,16 @@ public:
   int gate_left[NT] = {0};
   bool clock16 = false, cycle_reset = false;
 
+  // ---- harmony for the Acorde / Mel. Compas melodies: a Compas applet in Hemispheres (ext, set by the
+  // driver every tick), otherwise our own Compas that only runs for its chords and melody
+  const xuzu::Harm *ext = nullptr;
+  uint8_t h_style = compas::S_TECHNO, h_fam = 0, h_prog = 1;
+  xuzu::Harm Harmony() const {
+    if (ext) return *ext;
+    xuzu::Harm h; h.root = (int8_t)(((harm.RootSemis() % 12) + 12) % 12); h.n = (uint8_t)harm.ChordTones(h.tones); h.mel = h_mel;
+    return h;
+  }
+
   void Init() {
     Pattern p; Factory(0, p); LoadPattern(p);
     for (int k = 0; k < NT; ++k) { seq_step[k] = 0; pitch[k] = 48; memset(phrase[k], 48, MAXLEN); }
@@ -157,6 +172,7 @@ public:
   // ---- clock: one call per semicorchea; period = ISR ticks since the previous one
   void Clock16(int period) {
     clock16 = true;
+    HarmClock();
     period16 = period;
     if (morph_bars && (clocks % 16) == 0 && clocks > 0) MorphStep();
     for (int k = 0; k < NT; ++k) {
@@ -175,6 +191,7 @@ public:
   void Reset() {
     for (int k = 0; k < NT; ++k) { seq_step[k] = 0; bite[k] = 0; }
     clocks = 0;
+    harm.Realign(); h_count = 0; h_next = NO_NOTE;
     for (int i = 0; i < QN; ++i) q_time[i] = -1;
     cycle_reset = true;
   }
@@ -225,6 +242,23 @@ public:
 
 private:
   static constexpr int QN = 48;
+  static constexpr int8_t NO_NOTE = -128;
+  compas::Engine harm;
+  bool harm_init = false; int h_count = 0; int8_t h_mel = 12, h_next = NO_NOTE;
+  void HarmClock() {
+    if (ext) return;
+    if (!harm_init) { harm.Reset(); harm.Seed(0xE0C1u ^ micros()); harm_init = true; }
+    harm.style = h_style % compas::NUM_STYLES; harm.fam = h_fam % compas::NUM_FAMS;
+    harm.prog = harm.fam == compas::H_AUTO ? 1 : h_prog;
+    if (h_next != NO_NOTE) { h_mel = h_next; h_next = NO_NOTE; }
+    const bool flam = harm.Def().flags & compas::F_CELLS;   // flamenco counts semicorcheas, the rest corcheas
+    if (!flam && (h_count++ & 1)) return;
+    const compas::Event ev = harm.Tick();
+    for (int i = 0; i < ev.mel_n; ++i) {
+      if (!((ev.mel_notes >> i) & 1)) continue;
+      if (flam || ev.mel_at[i] < compas::FINE / 2) h_mel = ev.mel_semis[i]; else h_next = ev.mel_semis[i];
+    }
+  }
   int q_time[QN], q_dur[QN];
   uint8_t q_kind[QN], q_track[QN], q_vel[QN], q_note[QN];
   int seq_step[NT] = {0}, bite[NT] = {0};
@@ -342,10 +376,19 @@ private:
       }
       case M_ESCALA: note = Degree(eu); phrase[k][si] = (uint8_t)note; break;
       case M_FRASE: note = phrase[k][si]; break;
+      case M_ACORDE: {          // the chord of the Compas, up over two octaves; with Azar, any of its notes
+        const xuzu::Harm h = Harmony(); const int n = h.n ? h.n : 1;
+        const int az = constrain(tr.azar + (cv_azar[k] + hm_azar[k]), 0, 100);
+        const int idx = az > 0 ? (int)((tr.seed_libre ? Rand() : Hash(tr.seed ^ 0xC4C4u, eu)) % (n * 2)) : eu % (n * 2);
+        note = 48 + h.root + h.tones[idx % n] + 12 * (idx / n);
+        phrase[k][si] = (uint8_t)note; break;
+      }
+      case M_COMPAS: note = 48 + Harmony().mel; phrase[k][si] = (uint8_t)note; break;
       default: note = Quantize(tr.tono); phrase[k][si] = (uint8_t)note; break;
     }
     // CV "Tono": 1V/oct inside the scale (one scale degree per semitone of CV)
-    if (cv_pitch[k] + hm_pitch[k]) {
+    if ((cv_pitch[k] + hm_pitch[k]) && tr.mel >= M_ACORDE) note += cv_pitch[k] + hm_pitch[k];   // following Compas: plain semitones
+    else if (cv_pitch[k] + hm_pitch[k]) {
       const int deg = (cv_pitch[k] + hm_pitch[k]) * SCALE_LEN[scale] / 12;
       int best = 0;
       for (int i = 0; i < SCALE_LEN[scale]; ++i) if (Degree(i) % 12 == note % 12) { best = i; break; }
@@ -365,8 +408,9 @@ private:
       Enq(2, 17 * 25, k, 0, 0, tr.midi_note);
     } else {
       const int dur = gate_len > 17 * 10 ? gate_len : 17 * 60;
+      const int shift = tr.mel >= M_ACORDE ? COMPAS_MIDI_SHIFT : 0;     // same MIDI note as the Compas
       for (int i = 0; i < 4 && CHORDS[tr.chord][i] >= 0; ++i) {
-        const int n = constrain(note + CHORDS[tr.chord][i], 0, 127);
+        const int n = constrain(note + shift + CHORDS[tr.chord][i], 0, 127);
         usbMIDI.sendNoteOn(n, v, tr.chan);
         Enq(2, dur, k, 0, 0, (uint8_t)n);
       }

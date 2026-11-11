@@ -19,7 +19,10 @@ public:
     if (owner) {
       last_owner_tick = now;
       xuzu::brains_seen_tick = now;
-      if (!xuzu::Recent(xuzu::eucl_seen_tick, now)) euclid_engine.ClearHM();   // no Eucl x4 applet adding CV
+      if (!xuzu::Recent(xuzu::eucl_seen_tick, now)) {     // no Eucl x4 applet: no CV from it, and Euclid follows a Compas applet if there is one
+        euclid_engine.ClearHM();
+        euclid_engine.ext = xuzu::Recent(xuzu::compas_seen_tick, now) ? &xuzu::compas_harm : nullptr;
+      }
       e.SetMacro(In(0));
       if (cv2 == 0) { e.SetLoopGate(In(1) > HEMISPHERE_3V_CV / 2); e.SetTransition(0); }
       else { e.SetLoopGate(false); e.SetTransition(In(1)); }

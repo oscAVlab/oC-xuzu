@@ -6,7 +6,7 @@ namespace OC {
 
 #ifdef XUZU
 #ifndef XUZU_VERSION
-#define XUZU_VERSION "v4.21"
+#define XUZU_VERSION "v4.22"
 #endif
   // oscAVlab firmware: our version on screen, Phazerville's in the release name
   const char * const VERSION = "osc[AV]lab " XUZU_VERSION;

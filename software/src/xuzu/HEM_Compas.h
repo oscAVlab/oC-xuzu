@@ -1,16 +1,17 @@
 // Compas applet (xuzu v4.18): a Compas of its own in half a screen, with all its settings.
 // TR1 clock (x4 or x2 of the Pam)  TR2 reset   CV1 / CV2 assignable (Dens / Solt by default)
-// Outputs: Trig+Mel (default), A+B, C+D, Acen+Rell, Raiz+Mel (in the electronic styles the root follows their bass line)
+// Outputs: Trig+Mel (default), A+B, C+D, Acen+Rell, Raiz+Mel, Rell+Mel (in the electronic styles the root follows their bass line)
 // MIDI like the app: ch10 percussion, ch1 melody, ch2 chords, ch3 bass
 #pragma once
 #include "xuzu/compas_engine.h"
 #include "xuzu/hem_list.h"
+#include "xuzu/harm_share.h"
 
 class CompasApplet : public XuzuListApplet {
 public:
   enum Prm { P_STYLE, P_FAM, P_PROG, P_DENS, P_SOLT, P_NOTAS, P_ADORNO, P_EMPUJE, P_RANGO, P_OCT, P_LOCK, P_LOOP,
              P_OUTS, P_CV1, P_CV2, P_CLK, P_MIDI, P_MAT, NUM_P };
-  enum Outs { O_TRIGMEL = 0, O_AB, O_CD, O_ACCFILL, O_ROOTMEL, NUM_OUTS };
+  enum Outs { O_TRIGMEL = 0, O_AB, O_CD, O_ACCFILL, O_ROOTMEL, O_FILLMEL, NUM_OUTS };
   enum CvDest { CV_NADA = 0, CV_DENS, CV_SOLT, CV_NOTAS, CV_ADORNO, CV_EMPUJE, CV_ESTILO, CV_PROG, CV_RANGO, CV_OCT,
                 CV_TRANSP, CV_CONGELAR, CV_NUEVO, CV_LOOP, NUM_CV };
 
@@ -42,6 +43,7 @@ public:
     }
     if (glide_left > 0) { --glide_left; if (MelOut()) Out(1, MelCV()); }
     if (flash) flash--;
+    Publish();
   }
 
   void View() { DrawList(flash > 0); }
@@ -79,7 +81,7 @@ protected:
     help[HELP_DIGITAL2] = "Reset";
     help[HELP_CV1] = CV_SHORT[cv_dest[0]];
     help[HELP_CV2] = CV_SHORT[cv_dest[1]];
-    help[HELP_OUT1] = outs == O_ROOTMEL ? "Raiz" : "Trig";
+    help[HELP_OUT1] = outs == O_ROOTMEL ? "Raiz" : outs == O_FILLMEL ? "Rell" : "Trig";
     help[HELP_OUT2] = (outs == O_ACCFILL) ? "Rell" : (outs == O_CD ? "Raiz" : "Melod");
     help[HELP_EXTRA1] = "Reloj: x4 o x2 del Pam";
     help[HELP_EXTRA2] = "MIDI: 10 perc 1 mel 2 3";
@@ -106,8 +108,8 @@ protected:
       case P_OCT: xuzu::Signed(oct, b); break;
       case P_LOCK: { static const char *const L[compas::NUM_LOCKS] = {"No", "Ritmo", "Melod", "Armon", "R+M", "Todo"}; xuzu::Copy(b, L[lock], m); break; }
       case P_LOOP: { static const char *const L[compas::NUM_LOOPS] = {"1 t", "2 t", "4 t", "1/2 c", "1 c", "2 c", "4 c", "8 c"}; xuzu::Copy(b, L[loop], m); break; }
-      case P_OUTS: { static const char *const O[NUM_OUTS] = {"Trig+Mel", "A+B", "C+D", "Acen+Rell", "Raiz+Mel"};
-                     static const char *const S[NUM_OUTS] = {"T+Mel", "A+B", "C+D", "Ac+Re", "R+Mel"}; xuzu::Copy(b, full ? O[outs] : S[outs], m); break; }
+      case P_OUTS: { static const char *const O[NUM_OUTS] = {"Trig+Mel", "A+B", "C+D", "Acen+Rell", "Raiz+Mel", "Rell+Mel"};
+                     static const char *const S[NUM_OUTS] = {"T+Mel", "A+B", "C+D", "Ac+Re", "R+Mel", "F+Mel"}; xuzu::Copy(b, full ? O[outs] : S[outs], m); break; }
       case P_CV1: case P_CV2: xuzu::Copy(b, full ? CV_NAMES[cv_dest[i - P_CV1]] : CV_SHORT[cv_dest[i - P_CV1]], m); break;
       case P_CLK: xuzu::Copy(b, clk ? "x2 Pam" : "x4 Pam", m); break;
       case P_MIDI: xuzu::Copy(b, midi ? "Si" : "No", m); break;
@@ -227,8 +229,16 @@ private:
     const int root = 52 + ((engine.RootSemis() % 12) + 12) % 12 + transp;
     for (int i = 0; i < n; ++i) { chord_on[i] = (int8_t)constrain(root + iv[i], 0, 127); usbMIDI.sendNoteOn(chord_on[i], vel, 2); }
   }
+  // what Euclid x4 follows in its Acorde / Mel. Compas melodies
+  void Publish() {
+    xuzu::Harm &h = xuzu::compas_harm;
+    h.root = (int8_t)((((engine.RootSemis() + transp) % 12) + 12) % 12);
+    h.n = (uint8_t)engine.ChordTones(h.tones);
+    h.mel = (int8_t)constrain(mel_semis + transp, -36, 60);
+    xuzu::compas_seen_tick = OC::CORE::ticks;
+  }
   bool StyleBass() const { return (engine.Def().flags & compas::F_LINE16) && !(engine.Def().flags & compas::F_ACID); }
-  bool MelOut() const { return outs == O_TRIGMEL || outs == O_AB || outs == O_ROOTMEL; }
+  bool MelOut() const { return outs == O_TRIGMEL || outs == O_AB || outs == O_ROOTMEL || outs == O_FILLMEL; }
   int Shift() const { return (transp + 12 * oct_eff) * 128; }
   int MelCV() const { const int to = mel_semis * 128; return Shift() + (glide_left > 0 ? to + (glide_from - to) * glide_left / glide_len : to); }
   void Drum(int note, int vel) { if (midi) { usbMIDI.sendNoteOn(note, vel, 10); usbMIDI.sendNoteOff(note, 0, 10); } }
@@ -240,7 +250,7 @@ private:
         break;
       case K_FILL:
         Drum(38, a);
-        if (outs == O_TRIGMEL || outs == O_CD) ClockOut(0);
+        if (outs == O_TRIGMEL || outs == O_CD || outs == O_FILLMEL) ClockOut(0);
         if (outs == O_ACCFILL) ClockOut(1);
         break;
       case K_MEL: {

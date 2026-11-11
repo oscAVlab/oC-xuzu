@@ -28,6 +28,7 @@ public:
     CV1D, CV1T, CV2D, CV2T, CV3D, CV3T,
     CLK, BPM, DESPL, TR2, TR3, TR4,
     PRESET, LOADP, SAVEP, PATRON, MORPH, GOPAT, SAVEM, SAVESTATE,
+    H_STYLE, H_FAM, H_PROG,
     NUM_PARAMS };
   enum TrDest { TR_NADA, TR_RESET, TR_FILL, TR_NEXT, TR_MUTE1, TR_MUTE2, TR_MUTE3, TR_MUTE4, TR_SEEDS, NUM_TR };
   enum CvDest { CV_NADA, CV_HITS, CV_ROT, CV_STEPS, CV_LEN, CV_PROB, CV_AZAR, CV_RATIO, CV_BURST, CV_TONO, CV_MUTE, CV_FILL, CV_PATRON, NUM_CVD };
@@ -36,8 +37,9 @@ public:
   struct __attribute__((packed)) Rack {
     uint8_t patch, voz1, voz2, out[4], cvd[3], cvt[3], clk, bpm, tr[3], midi, mclk, pattern, morph, preset;
   };
-  struct __attribute__((packed)) State { euclid4::Track t[euclid4::NT]; uint8_t swing, scale, root; Rack rack; };
-  struct FlashPreset { xuzu::PresetHeader h; euclid4::Track t[euclid4::NT]; uint8_t swing, scale, root; };
+  struct __attribute__((packed)) State { euclid4::Track t[euclid4::NT]; uint8_t swing, scale, root; Rack rack; uint8_t h_style, h_fam, h_prog; };
+  struct FlashPreset { xuzu::PresetHeader h; euclid4::Track t[euclid4::NT]; uint8_t swing, scale, root; uint8_t h_style, h_fam, h_prog; };
+  struct FlashPresetV1 { xuzu::PresetHeader h; euclid4::Track t[euclid4::NT]; uint8_t swing, scale, root; };   // up to v4.21, no harmony
   static_assert(sizeof(FlashPreset) <= xuzu::PRESET_SIZE, "Euclid preset too big");
   static_assert(sizeof(State) != 69, "must differ from the v4.16 layout");
 
@@ -56,6 +58,7 @@ public:
   void Controller() {
     euclid4::Engine &e = E();
     e.midi = rack.midi; e.mclk = rack.mclk;
+    e.ext = nullptr;      // the app plays alone: its own Compas gives the harmony
     ApplyCV();
 
     // TR2-TR4
@@ -161,6 +164,7 @@ public:
     State *s = (State *)dst;
     for (int k = 0; k < 4; ++k) s->t[k] = E().t[k];
     s->swing = E().swing; s->scale = E().scale; s->root = E().root; s->rack = rack;
+    s->h_style = E().h_style; s->h_fam = E().h_fam; s->h_prog = E().h_prog;
     return sizeof(State);
   }
   size_t RestoreState(const void *src) {
@@ -168,13 +172,19 @@ public:
     if (s->t[0].len == 0 || s->t[0].len > euclid4::MAXLEN) return sizeof(State);
     for (int k = 0; k < 4; ++k) E().t[k] = s->t[k];
     E().swing = s->swing; E().scale = s->scale % euclid4::NUM_SCALES; E().root = s->root % 12; rack = s->rack;
+    SetHarmony(s->h_style, s->h_fam, s->h_prog);
     return sizeof(State);
   }
 
   // used by Brains Seq ("Euclid preset")
   bool LoadPresetSlot(int slot) {
     FlashPreset fp;
-    if (!xuzu::LoadPreset(xuzu::D_EUCLID, slot, 1, &fp, sizeof(fp))) return false;
+    if (!xuzu::LoadPreset(xuzu::D_EUCLID, slot, 1, &fp, sizeof(fp))) {
+      FlashPresetV1 o;                       // a preset saved before v4.22: keeps the harmony we have
+      if (!xuzu::LoadPreset(xuzu::D_EUCLID, slot, 1, &o, sizeof(o))) return false;
+      memcpy((void *)&fp, &o, sizeof(o)); fp.h_style = E().h_style; fp.h_fam = E().h_fam; fp.h_prog = E().h_prog;
+    }
+    SetHarmony(fp.h_style, fp.h_fam, fp.h_prog);
     euclid4::Pattern p;
     for (int k = 0; k < 4; ++k) p.t[k] = fp.t[k];
     p.swing = fp.swing;
@@ -184,14 +194,15 @@ public:
   }
 
 private:
-  static constexpr int NUM_PAGES = 9;
-  static constexpr const char *PAGE_NAMES[NUM_PAGES] = {"Euclides", "Azar", "Rafaga", "Nota", "MIDI", "Salidas", "Entradas CV", "Reloj / TR", "Patrones"};
-  static constexpr int PAGE_LEN[NUM_PAGES] = {5, 5, 5, 7, 5, 7, 6, 6, 8};
+  static constexpr int NUM_PAGES = 10;
+  static constexpr const char *PAGE_NAMES[NUM_PAGES] = {"Euclides", "Azar", "Rafaga", "Nota", "Armonia", "MIDI", "Salidas", "Entradas CV", "Reloj / TR", "Patrones"};
+  static constexpr int PAGE_LEN[NUM_PAGES] = {5, 5, 5, 7, 3, 5, 7, 6, 6, 8};
   static constexpr uint8_t PAGE_PARAMS[NUM_PAGES][8] = {
     {LEN, STEPS, HITS, ROT, RATIO},
     {PROB, AZAR, SEMILLA, MUTE, SWING},
     {BURST, BHITS, BROT, BMODE, BDIV},
     {TIPO, MEL, TONO, OCTV, GATE, SCALE, ROOT},
+    {H_STYLE, H_FAM, H_PROG},
     {MNOTE, MCHORD, MCHAN, MIDI, MCLK},
     {PATCH, VOZ1, VOZ2, OUTA, OUTB, OUTC, OUTD},
     {CV1D, CV1T, CV2D, CV2T, CV3D, CV3T},
@@ -206,9 +217,15 @@ private:
     "Patch", "Voz 1", "Voz 2", "Salida A", "Salida B", "Salida C", "Salida D",
     "CV1", "CV1 pista", "CV2", "CV2 pista", "CV3", "CV3 pista",
     "Reloj", "BPM interno", "Desplazar", "TR2", "TR3", "TR4",
-    "Preset", "Cargar preset", "Guardar preset", "Patron", "Morph", "Ir al patron", "Guardar en M", "Guardar estado"};
+    "Preset", "Cargar preset", "Guardar preset", "Patron", "Morph", "Ir al patron", "Guardar en M", "Guardar estado",
+    "Estilo", "Armonia", "Progresion"};
   static bool PerTrack(int p) { return p <= GATE || (p >= MNOTE && p <= MCHAN); }
 
+  void SetHarmony(int st, int fam, int prog) {
+    euclid4::Engine &e = E();
+    e.h_style = st % compas::NUM_STYLES; e.h_fam = fam % compas::NUM_FAMS;
+    e.h_prog = constrain(prog, 0, compas::Engine::NumProgs(e.h_fam) - 1);
+  }
   Rack rack;
   euclid4::Pattern mem;     // memory M (RAM only)
   bool mem_valid = false;
@@ -300,6 +317,7 @@ private:
     FlashPreset fp;
     for (int k = 0; k < 4; ++k) fp.t[k] = E().t[k];
     fp.swing = E().swing; fp.scale = E().scale; fp.root = E().root;
+    fp.h_style = E().h_style; fp.h_fam = E().h_fam; fp.h_prog = E().h_prog;
     const bool ok = xuzu::SavePreset(xuzu::D_EUCLID, slot, 1, &fp, sizeof(fp));
     OC::save_app_data();
     Message(ok ? "Guardado" : "Error flash");
@@ -335,7 +353,7 @@ private:
       case SWING: hi = 100; step = 5; break;
       case BURST: lo = 1; hi = 8; break;
       case BHITS: hi = 16; break; case BROT: hi = 15; break; case BDIV: hi = 8; break;
-      case MEL: hi = 3; break; case TONO: hi = 127; break; case OCTV: lo = -3; hi = 3; break;
+      case MEL: hi = euclid4::NUM_MEL - 1; break; case TONO: hi = 127; break; case OCTV: lo = -3; hi = 3; break;
       case SCALE: hi = euclid4::NUM_SCALES - 1; break; case ROOT: hi = 11; break;
       case MNOTE: hi = 127; break; case MCHORD: hi = euclid4::NUM_CHORDS - 1; break; case MCHAN: lo = 1; hi = 16; break;
       case PATCH: hi = 2; break; case VOZ1: case VOZ2: hi = 3; break;
@@ -347,6 +365,8 @@ private:
       case PRESET: hi = xuzu::NUM_PRESETS - 1; break;
       case PATRON: hi = euclid4::NUM_FACTORY; break;
       case MORPH: hi = 5; break;
+      case H_STYLE: hi = compas::NUM_STYLES - 1; break; case H_FAM: hi = compas::NUM_FAMS - 1; break;
+      case H_PROG: hi = compas::Engine::NumProgs(E().h_fam) - 1; break;
       default: hi = 1; break;
     }
   }
@@ -361,6 +381,7 @@ private:
       case CLK: return rack.clk; case BPM: return rack.bpm; case DESPL: return despl;
       case TR2: case TR3: case TR4: return rack.tr[prm - TR2];
       case PRESET: return rack.preset; case PATRON: return rack.pattern; case MORPH: return rack.morph;
+      case H_STYLE: return E().h_style; case H_FAM: return E().h_fam; case H_PROG: return E().h_prog;
       default: return 0;
     }
   }
@@ -382,6 +403,8 @@ private:
       case CLK: rack.clk = v; break; case BPM: rack.bpm = v; break;
       case TR2: case TR3: case TR4: rack.tr[prm - TR2] = v; break;
       case PRESET: rack.preset = v; break; case PATRON: rack.pattern = v; break; case MORPH: rack.morph = v; break;
+      case H_STYLE: SetHarmony(v, E().h_fam, E().h_prog); break; case H_FAM: SetHarmony(E().h_style, v, E().h_prog); break;
+      case H_PROG: SetHarmony(E().h_style, E().h_fam, v); break;
       default: break;
     }
   }
@@ -433,6 +456,9 @@ private:
       case PRESET: gfxPrint(v + 1); gfxPrint(xuzu::PresetValid(xuzu::D_EUCLID, v, 1) ? "" : " (vacio)"); break;
       case PATRON: gfxPrint(euclid4::FACTORY_NAMES[v]); if (v == euclid4::NUM_FACTORY && !mem_valid) gfxPrint(" (vacia)"); break;
       case MORPH: gfxPrint(MORPHN[v]); break;
+      case H_STYLE: gfxPrint(compas::STYLES[v].name); break;
+      case H_FAM: gfxPrint(compas::FAMS[v].name); break;
+      case H_PROG: gfxPrint(compas::Engine::ProgName(E().h_fam, E().h_fam == compas::H_AUTO ? 1 : v)); break;
       case LOADP: case SAVEP: case GOPAT: case SAVEM: case SAVESTATE: gfxPrint("gira >"); break;
       default: gfxPrint(v); break;
     }

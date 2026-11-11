@@ -38,6 +38,7 @@ public:
   void Controller() {
     brains::Engine &e = E();
     euclid_engine.ClearHM();
+    euclid_engine.ext = nullptr;     // Euclid's Acorde / Mel. Compas follow its own Compas
     e.SetMacro(frame.inputs[0]);
     e.SetTransition(frame.inputs[1]);
     e.SetLoopGate(frame.gate_high[2]);

@@ -1,7 +1,8 @@
 // "Particulas": a screensaver that reacts to what the module is playing (oscAVlab).
 // The ISR watches the 4 outputs and TR1. A jump up on an output (a trigger or gate) is a burst of
-// sparks and a ring; a new note (a step in a CV) is a bubble that rises; TR1 gives the whole cloud
-// a kick. Each output has its own column (A B C D, left to right); the height is the voltage.
+// sparks and its quarter of the screen lights up as a box that closes in; a new note (a step in a CV)
+// is a bubble that rises; TR1 gives the whole cloud a kick. Each output has its own column
+// (A B C D, left to right); the height is the voltage, shown by the bars at the bottom.
 // The more is going on, the more the cloud swirls.
 #pragma once
 #include <stdint.h>
@@ -49,9 +50,8 @@ inline void Sample(const uint32_t *dac, bool beat) {
 struct P { int16_t x, y, vx, vy; uint8_t life, kind; };   // position in 1/64 px
 static constexpr int NP = 72;
 inline P parts[NP];
-struct Ring { int16_t x, y; uint8_t r, max; };
-static constexpr int NR = 6;
-inline Ring rings[NR];
+struct Box { uint8_t step, max; };     // per output: a frame of its column that closes in
+inline Box boxes[4];
 inline uint32_t rng = 0x0A5C1AB5u;
 inline int energy = 0;          // activity, 0..1000
 inline int swirl = 0;
@@ -63,11 +63,7 @@ inline void Spawn(int x, int y, int vx, int vy, int life, int kind) {
   for (int i = 0; i < NP; ++i) { if (!parts[i].life) { best = i; bl = 0; break; } if (parts[i].life < bl) { bl = parts[i].life; best = i; } }
   parts[best] = {(int16_t)(x * 64), (int16_t)(y * 64), (int16_t)vx, (int16_t)vy, (uint8_t)life, (uint8_t)kind};
 }
-inline void AddRing(int x, int y, int max) {
-  int best = 0;
-  for (int i = 0; i < NR; ++i) if (rings[i].r >= rings[i].max) { best = i; break; }
-  rings[best] = {(int16_t)x, (int16_t)y, 1, (uint8_t)max};
-}
+inline void AddBox(int ch, int strength) { boxes[ch] = {0, (uint8_t)(6 + strength / 2)}; }
 
 inline void Draw() {
   frame++;
@@ -78,14 +74,13 @@ inline void Draw() {
     if (e.kind == 0) {                      // hit: a fountain of sparks from low in its column, and a ring
       const int n = 6 + e.strength / 2, hy = 46;
       for (int i = 0; i < n; ++i) Spawn(x, hy, R(201) - 100, -60 - R(140), 14 + R(14), 0);
-      AddRing(x, hy, 8 + e.strength / 2);
+      AddBox(e.ch, e.strength);
       energy += 60;
     } else if (e.kind == 1) {               // note: a bubble that floats up
       Spawn(x, y, R(41) - 20, -40 - R(30), 50 + R(30), 1);
       energy += 15;
-    } else {                                // TR1: kick the whole cloud and a ring in the middle
+    } else {                                // TR1: kick the whole cloud
       for (int i = 0; i < NP; ++i) if (parts[i].life) { parts[i].vx += (parts[i].x / 64 < 64 ? -24 : 24); parts[i].vy -= 20; }
-      AddRing(64, 32, 6);
       swirl = 1 - swirl;
     }
   }
@@ -113,17 +108,19 @@ inline void Draw() {
     else if (p.kind == 0 && p.life > 10) graphics.drawRect(px, py, 2, 2);
     else graphics.setPixel(px, py);
   }
-  for (int i = 0; i < NR; ++i) {
-    Ring &r = rings[i];
-    if (r.r >= r.max) continue;
-    graphics.drawCircle(r.x, r.y, r.r);
-    if (frame & 1) r.r++;
+  for (int c = 0; c < 4; ++c) {             // a hit: its quarter of the screen, closing in
+    Box &b = boxes[c];
+    if (b.step >= b.max) continue;
+    const int i = b.step * 2;
+    if (i < 13) { graphics.drawFrame(32 * c + 1 + i, i, 30 - 2 * i, 57 - 2 * i); if (b.step == 0) graphics.drawFrame(32 * c + 2, 1, 28, 55); }   // above the bars
+    if (frame & 1) b.step++;
   }
-  // the 4 outputs as small marks at the bottom, at their height
+  // the 4 outputs as bars at the bottom of their column: the width is the voltage
   for (int c = 0; c < 4; ++c) {
     const int span = hi_v[c] - lo_v[c] > 2000 ? hi_v[c] - lo_v[c] : 2000;
-    const int h = (int)(last_v[c] - lo_v[c]) * 56 / span;
-    graphics.drawHLine(12 + 32 * c, 63 - (h > 56 ? 56 : h < 0 ? 0 : h), 9);
+    const int w = constrain((int)(last_v[c] - lo_v[c]) * 28 / span, 0, 28);
+    graphics.drawFrame(32 * c + 1, 59, 30, 5);
+    if (w > 0) graphics.drawRect(32 * c + 2, 60, w, 3);
   }
 }
 
