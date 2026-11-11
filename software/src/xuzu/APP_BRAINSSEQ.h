@@ -37,6 +37,7 @@ public:
 
   void Controller() {
     brains::Engine &e = E();
+    euclid_engine.ClearHM();
     e.SetMacro(frame.inputs[0]);
     e.SetTransition(frame.inputs[1]);
     e.SetLoopGate(frame.gate_high[2]);
@@ -149,9 +150,11 @@ private:
     OC::save_app_data();
     Message(ok ? "Guardado" : "Error flash");
   }
-  void LoadPreset(int s) {
+  void LoadPreset(int s) { Message(LoadPresetSlot(s) ? "Cargado" : "Vacio"); }
+public:
+  bool LoadPresetSlot(int s) {
     FlashPreset fp;
-    if (!xuzu::LoadPreset(xuzu::D_BRAINS, s, 1, &fp, sizeof(fp))) { Message("Vacio"); return; }
+    if (!xuzu::LoadPreset(xuzu::D_BRAINS, s, 1, &fp, sizeof(fp))) return false;
     E().s = fp.s;     // calibration and clock are not in presets
     compas::Engine::Material m;
     for (int i = 0; i < compas::MAX_LOOP; ++i) { m.r_seed[i] = fp.mat.r0; m.m_seed[i] = fp.mat.m0; m.m_pos[i] = fp.mat.mp0; }
@@ -162,8 +165,9 @@ private:
 #ifdef ENABLE_APP_EUCLID4
     if (fp.s.euclid_preset > 0) Euclid4_instance.LoadPresetSlot(fp.s.euclid_preset - 1);
 #endif
-    Message("Cargado");
+    return true;
   }
+private:
 
   uint8_t *Field(int prm) {
     brains::Settings &s = E().s; brains::Slot &sl = s.slot[slot];
@@ -252,6 +256,7 @@ constexpr const char *BrainsSeq::SHORT_SRC[];
 BrainsSeq BrainsSeq_instance;
 
 void BrainsSeq_init() { BrainsSeq_instance.BaseStart(); }
+namespace xuzu { bool BrainsLoadPreset(int slot) { return BrainsSeq_instance.LoadPresetSlot(slot); } }
 static constexpr size_t BrainsSeq_storageSize() { return sizeof(BrainsSeq::State); }
 size_t BrainsSeq_save(void *dst) { return BrainsSeq_instance.SaveState(dst); }
 size_t BrainsSeq_restore(const void *src) { return BrainsSeq_instance.RestoreState(src); }

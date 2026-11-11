@@ -226,6 +226,7 @@ private:
 
   void ApplyCV() {
     euclid4::Engine &e = E();
+    e.ClearHM();      // the applets' modulation does not apply while the app runs
     for (int k = 0; k < 4; ++k) { e.cv_hits[k] = e.cv_rot[k] = e.cv_steps[k] = e.cv_len[k] = e.cv_prob[k] = e.cv_azar[k] = 0;
                                   e.cv_ratio[k] = e.cv_burst[k] = e.cv_pitch[k] = 0; e.cv_mute[k] = false; }
     cv_fill = false;
@@ -446,6 +447,7 @@ constexpr const char *Euclid4::NAMES[];
 Euclid4 Euclid4_instance;
 
 void Euclid4_init() { Euclid4_instance.BaseStart(); }
+namespace xuzu { bool EuclidLoadPreset(int slot) { return Euclid4_instance.LoadPresetSlot(slot); } }
 static constexpr size_t Euclid4_storageSize() { return sizeof(Euclid4::State); }
 size_t Euclid4_save(void *dst) { return Euclid4_instance.SaveState(dst); }
 size_t Euclid4_restore(const void *src) { return Euclid4_instance.RestoreState(src); }

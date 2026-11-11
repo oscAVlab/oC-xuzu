@@ -132,6 +132,15 @@ public:
   int cv_hits[NT] = {0}, cv_rot[NT] = {0}, cv_steps[NT] = {0}, cv_len[NT] = {0}, cv_prob[NT] = {0}, cv_azar[NT] = {0},
       cv_ratio[NT] = {0}, cv_burst[NT] = {0}, cv_pitch[NT] = {0};
   bool cv_mute[NT] = {false, false, false, false};
+  // modulation from the Eucl x4 applets, on top of the app's / Brains' (cleared by whoever drives the engine)
+  int hm_hits[NT] = {0}, hm_rot[NT] = {0}, hm_steps[NT] = {0}, hm_len[NT] = {0}, hm_prob[NT] = {0}, hm_azar[NT] = {0},
+      hm_ratio[NT] = {0}, hm_burst[NT] = {0}, hm_pitch[NT] = {0};
+  bool hm_mute[NT] = {false, false, false, false}, hm_fill = false;
+  void ClearHM() {
+    for (int k = 0; k < NT; ++k) { hm_hits[k] = hm_rot[k] = hm_steps[k] = hm_len[k] = hm_prob[k] = hm_azar[k] = 0;
+                                   hm_ratio[k] = hm_burst[k] = hm_pitch[k] = 0; hm_mute[k] = false; }
+    hm_fill = false;
+  }
 
   // outputs, valid during the ISR tick after Update()
   bool hit[NT] = {false, false, false, false};
@@ -152,7 +161,7 @@ public:
     if (morph_bars && (clocks % 16) == 0 && clocks > 0) MorphStep();
     for (int k = 0; k < NT; ++k) {
       const Track &tr = t[k];
-      const int ri = constrain(tr.ratio + cv_ratio[k], 0, 8);
+      const int ri = constrain(tr.ratio + (cv_ratio[k] + hm_ratio[k]), 0, 8);
       const int n = RATIO_N[ri], d = RATIO_D[ri];
       if (d > 1) {
         if ((clocks % d) == 0) Schedule(k, 0, period * d);
@@ -201,10 +210,10 @@ public:
   bool Morphing() const { return morph_bars > 0; }
   void NewSeed(int k) { t[k].seed = Hash(t[k].seed ^ micros(), 0x5EED + k); }
 
-  int Hits(int k) const { return constrain(t[k].hits + cv_hits[k], 0, Steps(k)); }
-  int Steps(int k) const { return constrain(t[k].steps + cv_steps[k], 1, MAXLEN); }
-  int Len(int k) const { return constrain(t[k].len + cv_len[k], 1, MAXLEN); }
-  int Rot(int k) const { const int s = Steps(k); return (((t[k].rot + cv_rot[k]) % s) + s) % s; }
+  int Hits(int k) const { return constrain(t[k].hits + (cv_hits[k] + hm_hits[k]), 0, Steps(k)); }
+  int Steps(int k) const { return constrain(t[k].steps + (cv_steps[k] + hm_steps[k]), 1, MAXLEN); }
+  int Len(int k) const { return constrain(t[k].len + (cv_len[k] + hm_len[k]), 1, MAXLEN); }
+  int Rot(int k) const { const int s = Steps(k); return (((t[k].rot + (cv_rot[k] + hm_rot[k])) % s) + s) % s; }
   int StepPos(int k) const { return seq_step[k]; }
   bool PatternBit(int k, int i) const {
     uint8_t pat[MAXLEN]; Euclid(Hits(k), Steps(k), pat);
@@ -246,8 +255,8 @@ private:
 
   bool ShouldTrig(int k, int si) {
     const Track &tr = t[k];
-    int p = constrain(tr.prob + cv_prob[k], 0, 100);
-    const int az = constrain(tr.azar + cv_azar[k], 0, 100);
+    int p = constrain(tr.prob + (cv_prob[k] + hm_prob[k]), 0, 100);
+    const int az = constrain(tr.azar + (cv_azar[k] + hm_azar[k]), 0, 100);
     if (az > 0) {
       const int r = tr.seed_libre ? (int)(Rand() % 1000) : (int)(Hash(tr.seed, si) % 1000);
       p = constrain(p + (r - 500) * az / 1000, 0, 100);
@@ -264,8 +273,8 @@ private:
     const int s = Steps(k);
     uint8_t pat[MAXLEN]; Euclid(Hits(k), s, pat);
     const int eu = si % s;
-    const bool pulse = fill ? true : pat[(eu + Rot(k)) % s];
-    if (!pulse || mute[k] || cv_mute[k] || !ShouldTrig(k, si)) return;
+    const bool pulse = (fill || hm_fill) ? true : pat[(eu + Rot(k)) % s];
+    if (!pulse || mute[k] || cv_mute[k] || hm_mute[k] || !ShouldTrig(k, si)) return;
 
     const int note = NoteFor(k, si, eu);
     const uint8_t v = 100;
@@ -273,7 +282,7 @@ private:
     Fire(k, v, note, gl);
 
     // bursts on some of the pattern's hits
-    const int cnt = constrain(t[k].burst + cv_burst[k], 1, 8);
+    const int cnt = constrain(t[k].burst + (cv_burst[k] + hm_burst[k]), 1, 8);
     if (cnt > 1 && InBurstSet(k, pat, s, eu)) {
       const int extras = cnt - 1;
       if (t[k].bmode == 0) {
@@ -321,7 +330,7 @@ private:
     int note;
     switch (tr.mel) {
       case M_AZAR: {
-        const int az = constrain(tr.azar + cv_azar[k], 0, 100);
+        const int az = constrain(tr.azar + (cv_azar[k] + hm_azar[k]), 0, 100);
         if (az > 0) {
           const uint32_t r = tr.seed_libre ? Rand() : Hash(tr.seed ^ 0xA2A2u, eu);
           note = Degree((int)(r % (SCALE_LEN[scale] * 2)));
@@ -336,8 +345,8 @@ private:
       default: note = Quantize(tr.tono); phrase[k][si] = (uint8_t)note; break;
     }
     // CV "Tono": 1V/oct inside the scale (one scale degree per semitone of CV)
-    if (cv_pitch[k]) {
-      const int deg = cv_pitch[k] * SCALE_LEN[scale] / 12;
+    if (cv_pitch[k] + hm_pitch[k]) {
+      const int deg = (cv_pitch[k] + hm_pitch[k]) * SCALE_LEN[scale] / 12;
       int best = 0;
       for (int i = 0; i < SCALE_LEN[scale]; ++i) if (Degree(i) % 12 == note % 12) { best = i; break; }
       note = Degree(best + deg) + (note - Degree(best));
