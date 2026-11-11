@@ -75,6 +75,9 @@ namespace menu = OC::menu;
 #include "APP_Backup.h"
 #endif
 #include "APP_SETTINGS.h"
+#include "xuzu/APP_COMPAS.h"
+#include "xuzu/APP_EUCLID4.h"
+#include "xuzu/APP_BRAINSSEQ.h"
 
 #define DECLARE_APP(a, b, name, prefix) \
 { TWOCC<a,b>::value, name, \
@@ -99,6 +102,15 @@ static constexpr OC::App available_apps[] = {
   #endif
   DECLARE_APP('H','S', "Hemispheres", HEMISPHERE),
 #endif
+  #ifdef ENABLE_APP_COMPAS
+  DECLARE_APP('C','F', "Compas", Compas),
+  #endif
+  #ifdef ENABLE_APP_EUCLID4
+  DECLARE_APP('E','4', "Euclid x4", Euclid4),
+  #endif
+  #ifdef ENABLE_APP_BRAINSSEQ
+  DECLARE_APP('B','S', "Brains Seq", BrainsSeq),
+  #endif
 
   #ifdef ENABLE_APP_CALIBR8OR
   DECLARE_APP('C','8', "Calibr8or", Calibr8or),
@@ -164,7 +176,9 @@ static constexpr OC::App available_apps[] = {
   DECLARE_APP('N','N', "Neural Net", NeuralNetwork),
   #endif
   DECLARE_APP('S','C', "Scale Editor", SCALEEDITOR),
+#ifndef XUZU
   DECLARE_APP('W','A', "Waveform Editor", WaveformEditor),
+#endif
   #ifdef ENABLE_APP_PONG
   DECLARE_APP('P','O', "Pong", PONGGAME),
   #endif

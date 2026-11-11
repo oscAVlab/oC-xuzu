@@ -102,6 +102,8 @@ static constexpr int HEM_NR_OF_PRESETS = 50;
 static const char* const PRESET_FILENAME = "HEM_PRESETS.DAT";
 #elif defined(MOAR_PRESETS)
 static constexpr int HEM_NR_OF_PRESETS = 16;
+#elif defined(XUZU)
+static constexpr int HEM_NR_OF_PRESETS = 8;   // xuzu: same 8 presets as the original firmware
 #elif defined(CUSTOM_BUILD) && !defined(PEWPEWPEW)
 static constexpr int HEM_NR_OF_PRESETS = 4;
 #else

@@ -27,6 +27,9 @@
 #include "OC_ui.h"
 #include "src/drivers/display.h"
 #include "HSMIDI.h"
+#ifdef XUZU
+#include "xuzu/xuzu_flash.h"
+#endif
 
 class Backup: public SystemExclusiveHandler {
 public:
@@ -64,6 +67,23 @@ public:
             packet = 0;
             uint8_t V[33];
             
+#ifdef XUZU
+            // xuzu: the Compas / Euclid / Brains preset drawer goes first (packets 64-255),
+            // so the EEPROM part still ends on packet 63 like a stock backup
+            if (!calibration) {
+                for (int p = 64; p < 256; p++) {
+                    uint8_t ix = 0;
+                    V[ix++] = (uint8_t)p;
+                    packet = 1;
+                    const uint32_t off = (uint32_t)(p - 64) * 32;
+                    for (byte b = 0; b < 32; b++) V[ix++] = xuzu::BackupRead(off + b);
+                    UnpackedData unpacked;
+                    unpacked.set_data(ix, V);
+                    PackedData packed = unpacked.pack();
+                    SendSysEx(packed, 'B');
+                }
+            }
+#endif
             byte start = calibration ? 0 : (EEPROM_CALIBRATIONDATA_END / 32);
             byte end = calibration ?  (EEPROM_CALIBRATIONDATA_END / 32) : 64;
             for (byte p = start; p < end; p++)
@@ -89,6 +109,14 @@ public:
         if (ExtractSysExData(V, 'B')) {
             uint8_t ix = 0;
             uint8_t p = V[ix++]; // Get packet number
+#ifdef XUZU
+            if (p >= 64) {
+                if (p == 64) xuzu::RestoreBegin();
+                xuzu::RestoreWrite((uint32_t)(p - 64) * 32, V + ix, 32);
+                packet = 1;
+                return;
+            }
+#endif
             packet = p;
             uint16_t address = p * 32;
             for (byte b = 0; b < 32; b++) EEPROM.write(address++, V[ix++]);
