@@ -4,12 +4,20 @@ namespace OC {
 
   namespace Strings {
 
+#ifdef XUZU
+#ifndef XUZU_VERSION
+#define XUZU_VERSION "v4.18"
+#endif
+  // oscAVlab firmware: our version on screen, Phazerville's in the release name
+  const char * const VERSION = "osc[AV]lab " XUZU_VERSION;
+#else
   const char * const VERSION =
 #include "OC_version.h"
 #ifdef OC_VERSION_EXTRA
     OC_VERSION_EXTRA
 #endif
     ;
+#endif
 #ifdef OC_BUILD_TAG
   const char * const BUILD_TAG = OC_BUILD_TAG;
 #else
@@ -17,7 +25,11 @@ namespace OC {
 #endif
 
   // 17 char width                  |                 |
+#ifdef XUZU
+  const char * const RELEASE_NAME = "Phazerville 1.9.3";
+#else
   const char * const RELEASE_NAME = "Phazerville Suite";
+#endif
   // TODO: array of alternate titles, one for every letter of the alphabet
 
 #if defined(VOR)

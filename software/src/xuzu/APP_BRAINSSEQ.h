@@ -267,7 +267,7 @@ void BrainsSeq_handleAppEvent(OC::AppEvent event) {
 }
 void BrainsSeq_loop() {}
 void BrainsSeq_menu() { BrainsSeq_instance.BaseView(); }
-void BrainsSeq_screensaver() { BrainsSeq_instance.BaseScreensaver(true); }
+void BrainsSeq_screensaver() { xuzu::fx::Draw(); }
 void BrainsSeq_handleButtonEvent(const UI::Event &event) {
   if (event.type == UI::EVENT_BUTTON_PRESS) BrainsSeq_instance.OnButton(event.control);
   if (event.type == UI::EVENT_BUTTON_LONG_PRESS) BrainsSeq_instance.OnLongPress(event.control);

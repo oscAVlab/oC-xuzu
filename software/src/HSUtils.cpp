@@ -50,6 +50,9 @@ namespace HS {
     "[blank]",
     "Meters", "Scope",
     "Zaps", "Stars", "Zips",
+#ifdef XUZU
+    "Particulas",
+#endif
   };
 
   OC::menu::ScreenCursor<5> showhide_cursor;

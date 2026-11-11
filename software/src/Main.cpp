@@ -38,6 +38,9 @@
 #include "OC_strings.h"
 #include "OC_ui.h"
 #include "OC_options.h"
+#ifdef XUZU
+#include "xuzu/xuzu_fx.h"
+#endif
 #include "src/drivers/display.h"
 #include "src/drivers/ADC/OC_util_ADC.h"
 #include "util/util_debugpins.h"
@@ -107,6 +110,10 @@ void FASTRUN CORE_timer_ISR() {
   ++OC::CORE::ticks;
   if (OC::CORE::app_isr_enabled)
     OC::apps::ISR();
+#ifdef XUZU
+  { const uint32_t v[4] = {OC::DAC::value(0), OC::DAC::value(1), OC::DAC::value(2), OC::DAC::value(3)};
+    xuzu::fx::Sample(v, OC::DigitalInputs::clocked() & 1); }
+#endif
 
   OC_DEBUG_RESET_CYCLES(OC::CORE::ticks, 16384, OC::DEBUG::ISR_cycles);
 }

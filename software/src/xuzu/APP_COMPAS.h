@@ -838,7 +838,7 @@ void Compas_handleAppEvent(OC::AppEvent event) {
 }
 void Compas_loop() {}
 void Compas_menu() { Compas_instance.BaseView(); }
-void Compas_screensaver() { Compas_instance.BaseScreensaver(true); }
+void Compas_screensaver() { xuzu::fx::Draw(); }
 void Compas_handleButtonEvent(const UI::Event &event) {
   if (event.type == UI::EVENT_BUTTON_PRESS) Compas_instance.OnButton(event.control);
   if (event.type == UI::EVENT_BUTTON_LONG_PRESS) Compas_instance.OnLongPress(event.control);

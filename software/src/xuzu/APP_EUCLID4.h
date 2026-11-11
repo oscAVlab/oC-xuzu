@@ -458,7 +458,7 @@ void Euclid4_handleAppEvent(OC::AppEvent event) {
 }
 void Euclid4_loop() {}
 void Euclid4_menu() { Euclid4_instance.BaseView(); }
-void Euclid4_screensaver() { Euclid4_instance.BaseScreensaver(true); }
+void Euclid4_screensaver() { xuzu::fx::Draw(); }
 void Euclid4_handleButtonEvent(const UI::Event &event) {
   if (event.type == UI::EVENT_BUTTON_PRESS) Euclid4_instance.OnButton(event.control);
   if (event.type == UI::EVENT_BUTTON_LONG_PRESS) Euclid4_instance.OnLongPress(event.control);

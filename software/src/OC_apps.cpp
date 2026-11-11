@@ -75,6 +75,7 @@ namespace menu = OC::menu;
 #include "APP_Backup.h"
 #endif
 #include "APP_SETTINGS.h"
+#include "xuzu/xuzu_fx.h"
 #include "xuzu/APP_COMPAS.h"
 #include "xuzu/APP_EUCLID4.h"
 #include "xuzu/APP_BRAINSSEQ.h"

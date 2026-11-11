@@ -115,6 +115,9 @@ namespace HS {
     SCREEN_ZAPS,
     SCREEN_STARS,
     SCREEN_ZIPS,
+#ifdef XUZU
+    SCREEN_PARTICLES,
+#endif
 
     SCREENSAVER_MODE_COUNT
   };

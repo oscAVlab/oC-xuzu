@@ -38,6 +38,9 @@
 #include "HSClockManager.h"
 
 #include "hemisphere_config.h"
+#ifdef XUZU
+#include "xuzu/xuzu_fx.h"
+#endif
 
 #ifdef __IMXRT1062__
 #include "PhzConfig.h"
@@ -1623,6 +1626,11 @@ void HEMISPHERE_screensaver() {
     case SCREEN_SCOPE: // output scope
         OC::scope_render();
         break;
+#ifdef XUZU
+    case SCREEN_PARTICLES:
+        xuzu::fx::Draw();
+        break;
+#endif
     case SCREEN_METERS: // Meters
         manager.BaseScreensaver(true); // show note names
         break;
