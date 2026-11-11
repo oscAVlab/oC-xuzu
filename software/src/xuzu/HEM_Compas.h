@@ -40,6 +40,7 @@ public:
       if (q_t[i] < 0 || --q_t[i] > 0) continue;
       q_t[i] = -1; Do(q_k[i], q_v[i], q_a[i]);
     }
+    if (glide_left > 0) { --glide_left; if (MelOut()) Out(1, MelCV()); }
   }
 
   void View() {
@@ -75,13 +76,13 @@ public:
 
   uint64_t OnDataRequest() {
     uint64_t d = 0;
-    Pack(d, PackLocation{0, 4}, style); Pack(d, PackLocation{4, 7}, dens); Pack(d, PackLocation{11, 7}, solt);
+    Pack(d, PackLocation{0, 4}, style & 15); Pack(d, PackLocation{4, 7}, dens); Pack(d, PackLocation{11, 7}, solt);
     Pack(d, PackLocation{18, 3}, outs); Pack(d, PackLocation{21, 3}, fam); Pack(d, PackLocation{24, 1}, clk);
-    Pack(d, PackLocation{25, 1}, midi ? 0 : 1); Pack(d, PackLocation{32, 32}, seed);
+    Pack(d, PackLocation{25, 1}, midi ? 0 : 1); Pack(d, PackLocation{26, 1}, style >> 4); Pack(d, PackLocation{32, 32}, seed);
     return d;
   }
   void OnDataReceive(uint64_t d) {
-    style = constrain((int)Unpack(d, PackLocation{0, 4}), 0, compas::NUM_STYLES - 1);
+    style = constrain((int)(Unpack(d, PackLocation{0, 4}) | (Unpack(d, PackLocation{26, 1}) << 4)), 0, compas::NUM_STYLES - 1);
     dens = constrain((int)Unpack(d, PackLocation{4, 7}), 0, 100);
     solt = constrain((int)Unpack(d, PackLocation{11, 7}), 0, 100);
     outs = constrain((int)Unpack(d, PackLocation{18, 3}), 0, NUM_OUTS - 1);
@@ -111,6 +112,7 @@ private:
   uint32_t seed = 1;
   int since = 1000000, count = 0, half = 0, last_tp = 1000;
   int8_t mel_note = -1, bass_note = -1;
+  int mel_semis = 12, glide_left = 0, glide_len = 1, glide_from = 0; bool slide_next = false;
   int8_t chord_on[4] = {-1, -1, -1, -1};
   enum { K_ACC = 1, K_FILL, K_MEL, K_OFF };
   static constexpr int QN = 24;
@@ -130,7 +132,10 @@ private:
       if (ev.fine_b & (1u << k)) Enq(d, K_FILL, 0, ev.vel_b[k] ? ev.vel_b[k] : 80);
       for (int v = 0; v < compas::NUM_EXTRA_VOICES; ++v) if (ev.vmask[v] & (1u << k)) Enq(d, K_OFF, 39 + v, ev.vvel[v]);   // drum voices
     }
-    for (int i = 0; i < ev.mel_n; ++i) Enq(tp * ev.mel_at[i] / compas::FINE, K_MEL, ev.mel_semis[i], i == ev.mel_main ? 95 : 70);
+    for (int i = 0; i < ev.mel_n; ++i) {
+      const bool note = (ev.mel_notes >> i) & 1, acc = (ev.mel_acc >> i) & 1, tie = (ev.mel_tie >> i) & 1;
+      Enq(tp * ev.mel_at[i] / compas::FINE, K_MEL, (int16_t)((ev.mel_semis[i] & 0xFF) | (note ? 0x100 : 0) | (tie ? 0x200 : 0)), acc ? 122 : note ? 95 : 70);
+    }
     if (midi && (ev.fine_a & 1u)) {   // bass: the root on every accent, chords with the rhythm
       if (bass_note >= 0) usbMIDI.sendNoteOff(bass_note, 0, 3);
       bass_note = (int8_t)(40 + engine.RootSemis() % 12); usbMIDI.sendNoteOn(bass_note, 100, 3);
@@ -144,6 +149,8 @@ private:
     const int root = 52 + ((engine.RootSemis() % 12) + 12) % 12;
     for (int i = 0; i < n; ++i) { chord_on[i] = (int8_t)(root + iv[i]); usbMIDI.sendNoteOn(chord_on[i], vel, 2); }
   }
+  bool MelOut() const { return outs == O_TRIGMEL || outs == O_AB || outs == O_ROOTMEL; }
+  int MelCV() const { const int to = mel_semis * 128; return glide_left > 0 ? to + (glide_from - to) * glide_left / glide_len : to; }
   void Drum(int note, int vel) { if (midi) { usbMIDI.sendNoteOn(note, vel, 10); usbMIDI.sendNoteOff(note, 0, 10); } }
   void Do(uint8_t k, int16_t v, uint8_t a) {
     switch (k) {
@@ -156,10 +163,18 @@ private:
         if (outs == O_TRIGMEL || outs == O_CD) ClockOut(0);
         if (outs == O_ACCFILL) ClockOut(1);
         break;
-      case K_MEL:
-        if (outs == O_TRIGMEL || outs == O_AB || outs == O_ROOTMEL) Out(1, (int)v * 128);
-        if (midi) { if (mel_note >= 0) usbMIDI.sendNoteOff(mel_note, 0, 1); mel_note = (int8_t)constrain(64 + v, 0, 127); usbMIDI.sendNoteOn(mel_note, a, 1); }
+      case K_MEL: {
+        const int semis = (int8_t)(v & 0xFF);
+        if (v & 0x100) {      // a real note: the one after a tied note slides (acid)
+          if (slide_next) { glide_from = MelCV(); glide_len = glide_left = constrain(last_tp / 4, 17, 1700); }
+          else glide_left = 0;
+          slide_next = v & 0x200;
+        }
+        mel_semis = semis;
+        if (MelOut()) Out(1, MelCV());
+        if (midi) { if (mel_note >= 0) usbMIDI.sendNoteOff(mel_note, 0, 1); mel_note = (int8_t)constrain(64 + semis, 0, 127); usbMIDI.sendNoteOn(mel_note, a, 1); }
         break;
+      }
       case K_OFF: Drum(v, a); break;
     }
     if (outs == O_CD) Out(1, engine.RootSemis() * 128);

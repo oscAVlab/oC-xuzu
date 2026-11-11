@@ -100,6 +100,16 @@ static const ProgDef P_BOLE[] = {
   {"MenorLg", 8, {{A_,MIN,3},{D_,MIN7,3},{G_,DOM7,3},{C_,MAJ7,3},{F_,MAJ7,3},{B_,M7B5,3},{E_,DOM7,3},{A_,MIN,3}}},
   {"Trio",    8, {{C_,MAJ,8},{E_,DOM7,8},{A_,MIN,8},{C_,DOM7,8},{F_,MAJ,8},{F_,MIN,8},{G_,DOM7,8},{C_,MAJ,8}}},
 };
+// Electronica: A menor, pocos acordes (pedal, vaivenes), frigio para el acid, m7 para el dub
+static const ProgDef P_ELEC[] = {
+  {"Pedal",   4, {{A_,MIN,9},{A_,MIN,9},{A_,MIN,9},{A_,MIN,9}}},
+  {"i-VII",   4, {{A_,MIN,9},{G_,MAJ,9},{A_,MIN,9},{G_,MAJ,9}}},
+  {"i-VI",    4, {{A_,MIN,9},{F_,MAJ,9},{A_,MIN,9},{F_,MAJ,9}}},
+  {"i-bII",   4, {{A_,MIN,1},{BB,MAJ,1},{A_,MIN,1},{BB,MAJ,1}}},
+  {"i-iv",    4, {{A_,MIN,9},{D_,MIN,9},{A_,MIN,9},{D_,MIN,9}}},
+  {"Dub",     4, {{A_,MIN7,9},{A_,MIN7,9},{D_,MIN7,9},{E_,MIN7,9}}},
+  {"i-VI-VII",4, {{A_,MIN,9},{F_,MAJ,9},{G_,MAJ,9},{A_,MIN,9}}},
+};
 #undef E_
 #undef F_
 #undef FS
@@ -120,7 +130,7 @@ static const PoolChord POOL_JAZZ[6]  = {{5,MAJ7},{7,DOM7},{9,MIN7},{2,MIN7},{4,M
 static const PoolChord POOL_MINOR[6] = {{5,MIN},{3,MAJ},{8,MAJ},{10,MAJ},{7,DOM7},{0,MIN}};
 static const PoolChord POOL_PENTA[6] = {{3,MAJ},{10,MAJ},{7,MIN},{5,MIN},{8,MAJ},{0,MIN}};
 
-enum Fam : uint8_t { H_AUTO = 0, H_FLAM, H_ANDI, H_PASI, H_BOSS, H_BOLE, H_LIBRE, NUM_FAMS };
+enum Fam : uint8_t { H_AUTO = 0, H_FLAM, H_ANDI, H_PASI, H_BOSS, H_BOLE, H_LIBRE, H_ELEC, NUM_FAMS };   // H_ELEC after Libre: old presets keep their numbers
 struct FamDef { const char *abbr; const char *name; const ProgDef *progs; uint8_t n; uint8_t mode; const PoolChord *pool; uint8_t cadential; };
 static const FamDef FAMS[NUM_FAMS] = {
   {"Au", "Auto",     nullptr, 0, 0, nullptr, 0},
@@ -130,11 +140,12 @@ static const FamDef FAMS[NUM_FAMS] = {
   {"Bs", "Bossa",    P_BOSS, sizeof(P_BOSS) / sizeof(ProgDef), M_C_MAJ,  POOL_JAZZ,  1},
   {"Bo", "Bolero",   P_BOLE, sizeof(P_BOLE) / sizeof(ProgDef), M_C_MAJ,  POOL_JAZZ,  1},
   {"Li", "Libre",    nullptr, 0, 0, nullptr, 0},
+  {"El", "Electronica", P_ELEC, sizeof(P_ELEC) / sizeof(ProgDef), M_A_NMIN, POOL_MINOR, 1},
 };
 static constexpr int MAX_PROGS = 10;   // largest family (Flamenca)
 
 // ---------------------------------------------------------------- styles
-enum StyleFlags : uint8_t { F_CELLS = 1, F_TERNARY = 2, F_STRUM = 4 };
+enum StyleFlags : uint8_t { F_CELLS = 1, F_TERNARY = 2, F_STRUM = 4, F_ELEC = 8, F_ACID = 16 };
 struct StyleDef {
   const char *name;
   uint8_t len;        // cycle length in corcheas
@@ -156,7 +167,8 @@ static constexpr int CountPos(int count, int start, int len) { return 4 * (((cou
 template <typename... T> static constexpr uint64_t POS(T... p) { return (0ull | ... | (1ull << p)); }
 #define K(c) (1u << ((c) - 1))
 enum StyleId { S_BULERIA = 0, S_SOLEA, S_ALEGRIAS, S_SEGUIRIYA, S_TANGOS, S_SEVILLANAS,
-               S_SANJUANITO, S_PASILLO, S_BOMBA, S_YUMBO, S_CAPISHCA, S_BOSSA, S_BOLERO, NUM_STYLES };
+               S_SANJUANITO, S_PASILLO, S_BOMBA, S_YUMBO, S_CAPISHCA, S_BOSSA, S_BOLERO,
+               S_TECHNO, S_ACID, S_MINIMAL, S_DUB, S_ELECTRO, NUM_STYLES };
 static const StyleDef STYLES[NUM_STYLES] = {
   {"Bulerias",   24, 2, 12, Counts(K(12)|K(3)|K(6)|K(8)|K(10), 12, 12), 0, CountPos(10, 12, 12), F_CELLS|F_TERNARY|F_STRUM, H_FLAM, 0, H_FLAM},
   {"Solea",      24, 2,  1, Counts(K(3)|K(6)|K(8)|K(10)|K(12),  1, 12), 0, CountPos(10,  1, 12), F_CELLS|F_TERNARY|F_STRUM, H_FLAM, 5, H_FLAM},
@@ -171,6 +183,44 @@ static const StyleDef STYLES[NUM_STYLES] = {
   {"Capishca",   12, 3, 1, POS(0, 6, 12, 18),  POS(4, 10, 16, 22),              22, F_TERNARY|F_STRUM, H_ANDI, 8, H_ANDI},
   {"Bossa",       8, 2, 1, POS(0, 6, 8, 14),   POS(3, 10, 13),                  14, 0, H_BOSS, 0, H_BOSS},
   {"Bolero",     16, 2, 1, POS(0, 8, 16, 24),  POS(4, 6, 12, 14, 20, 22, 28, 30), 28, F_STRUM, H_BOLE, 0, H_BOLE},
+  // electronic, one 4/4 bar of 16 semicorcheas. A = kick, B = hats / percussion, no remates
+  {"Techno",      8, 2, 1, POS(0, 4, 8, 12),   POS(2, 6, 10, 14),               14, F_ELEC, H_ELEC, 1, H_ELEC},
+  {"Acid",        8, 2, 1, POS(0, 4, 8, 12),   POS(2, 6, 10, 14),               14, F_ELEC|F_ACID, H_ELEC, 3, H_ELEC},
+  {"Minimal",     8, 2, 1, POS(0, 4, 8, 12),   POS(3, 7, 11, 14),               14, F_ELEC, H_ELEC, 0, H_ELEC},
+  {"Dub techno",  8, 2, 1, POS(0, 4, 8, 12),   POS(3, 6, 10, 14),               14, F_ELEC, H_ELEC, 5, H_ELEC},
+  {"Electro",     8, 2, 1, POS(0, 7, 10),      POS(4, 12),                      12, F_ELEC, H_ELEC, 2, H_ELEC},
+};
+
+// how the melody moves in each style. Weights of each step (in scale degrees), the register it
+// leans towards, how much it lands on chord tones and how much it repeats its own figure.
+struct MelProfile {
+  uint8_t rep, dn1, up1, dn2, up2, leap, oct;   // weights: repeat, -1, +1, -2, +2, a 4th/5th, octave
+  uint8_t center;    // preferred position, in % of Rango
+  uint8_t chord;     // % of accents that land on a chord tone (100 = always, every note)
+  uint8_t motif;     // % of beats that repeat the figure of the previous beat
+};
+static const MelProfile MELP[NUM_STYLES] = {
+  // flamenco: stepwise and falling (cadencia andaluza), lots of repeated notes, narrow
+  {25, 38, 18, 9, 6, 3, 1,  45, 70, 15},   // Bulerias
+  {28, 40, 15, 9, 5, 2, 1,  40, 75, 15},   // Solea (more grave, more falling)
+  {20, 28, 28, 8, 9, 6, 1,  55, 70, 20},   // Alegrias (major, livelier, rises more)
+  {30, 40, 12, 10, 4, 3, 1, 35, 80, 10},   // Seguiriya (grave, lament)
+  {22, 32, 24, 9, 8, 4, 1,  50, 70, 25},   // Tangos
+  {18, 26, 26, 8, 8, 12, 2, 55, 85, 35},   // Sevillanas (sung couplets: leaps and repeats)
+  // andean: pentatonic, 4ths and 5ths, short figures that repeat
+  {22, 24, 20, 12, 10, 10, 2, 50, 75, 45}, // Sanjuanito
+  {12, 28, 18, 8, 10, 20, 4, 60, 90, 20},  // Pasillo (lyrical, wide, arpeggios then steps down)
+  {24, 22, 22, 12, 10, 8, 2, 45, 75, 40},  // Bomba
+  {28, 24, 20, 12, 8, 6, 2,  40, 70, 50},  // Yumbo (hypnotic, repetitive)
+  {22, 22, 22, 12, 12, 8, 2, 50, 75, 45},  // Capishca
+  {18, 32, 30, 7, 7, 5, 1,  55, 60, 20},   // Bossa (smooth, stepwise, tensions)
+  {12, 30, 20, 8, 10, 16, 4, 60, 90, 15},  // Bolero (romantic leaps, resolves down)
+  // electronic
+  {45, 17, 17, 6, 6, 4, 8,  25, 85, 60},   // Techno: riff
+  {30, 15, 15, 8, 8, 8, 16, 20, 70, 40},   // Acid: low 303 line with octave jumps
+  {60, 10, 10, 4, 4, 6, 6,  20, 95, 75},   // Minimal: almost a pedal, root and fifth
+  {35, 12, 12, 10, 10, 15, 6, 35, 100, 60},// Dub techno: only chord tones
+  {30, 14, 14, 6, 6, 14, 16, 25, 85, 50},  // Electro: octaves and fifths
 };
 #undef K
 
@@ -198,6 +248,9 @@ struct Event {
   uint8_t mel_main = 0;               // which of them is the real note (the rest are ornaments)
   uint8_t mel_at[4] = {0};
   int8_t mel_semis[4] = {0};
+  uint8_t mel_notes = 0;              // entries that are real notes (bit i = entry i): CV + gate
+  uint8_t mel_acc = 0;                // accented notes (acid)
+  uint8_t mel_tie = 0;                // notes tied into the next one: the next note slides (acid)
   bool new_chord = false;
   bool remate = false;
   bool beat_start = false;            // first corchea of a beat
@@ -383,6 +436,7 @@ public:
     ExtraVoices(ev, s0, next_a);
     Comping(ev, s0, a_on || a_off);
 
+    if (Acid()) { AcidLine(ev, s0); return ev; }
     bool mel = a_on || a_off;
     if (!mel && base) mel = rnd100(mkey ^ 0xABCDu, mp, 8) < (notas < 50 ? notas * 70 / 100 : 35 + (notas - 50) * 13 / 10);
     if (!mel && !base && notas > 50) mel = rnd100(mkey ^ 0xABCEu, mp, 9) < (notas - 50) * 8 / 10;
@@ -427,7 +481,9 @@ private:
     return h < phrase_len ? h : phrase_len;
   }
 
-  bool Techno() const { return perfil == 1; }
+  bool Techno() const { return perfil == 1 || (Def().flags & F_ELEC); }
+  bool Acid() const { return Def().flags & F_ACID; }
+  const MelProfile &MP() const { return MELP[active_style]; }
   bool LockedR() const { return lock == L_RITMO || lock == L_RIT_MEL || lock == L_TODO; }
   bool LockedM() const { return lock == L_MELODIA || lock == L_RIT_MEL || lock == L_TODO; }
   bool LockedH() const { return lock == L_ARMONIA || lock == L_TODO; }
@@ -513,7 +569,7 @@ private:
   // ------------------------------------------------ palmas y pies (MIDI only)
   void ExtraVoices(Event &ev, int s0, bool next_a) {
     const StyleDef &d = Def();
-    if (Techno()) {        // pie grave every beat, palma clara on backbeats, palma sorda on offbeats
+    if (Techno() && active_style != S_ELECTRO) {        // pie grave every beat, palma clara on backbeats, palma sorda on offbeats
       const int beat16 = d.beat * 2;
       for (int h = 0; h < 2; ++h) {
         const int s = s0 + h, bit = h * 3, in_beat = s % beat16, b = s / beat16;
@@ -676,9 +732,15 @@ private:
     return false;
   }
 
-  int Step(bool accent) {
-    const int r = rnd100(mkey ^ 0x5151u, mp, 10);
-    if (Techno()) {     // riff: repeated notes, small steps, some octave jumps
+  // the melody's random index: on some beats it reuses the previous beat's draws, so the figure repeats
+  int MotifIdx(int idx, int per) const {
+    const int b = idx / per;
+    if (b > 0 && rnd100(mkey ^ 0x30F1u, b, 14) < MP().motif) return idx - per;
+    return idx;
+  }
+  int Step(int idx) {
+    const int r = rnd100(mkey ^ 0x5151u, idx, 10);
+    if (perfil == 1 && !(Def().flags & F_ELEC)) {     // Techno profile on a traditional style: the riff
       if (r < 45) return 0;
       if (r < 62) return -1;
       if (r < 79) return 1;
@@ -686,19 +748,35 @@ private:
       if (r < 94) return -2;
       return 2;
     }
-    (void)accent;
-    return (r < 25) ? 0 : (r < 60) ? -1 : (r < 80) ? 1 : (r < 90) ? -2 : 2;
+    const MelProfile &m = MP();
+    int w[7] = {m.rep, m.dn1, m.up1, m.dn2, m.up2, m.leap, m.oct};
+    const int target = range * m.center / 100;
+    if (pos > target + 2) { w[2] /= 2; w[4] /= 2; w[1] += w[1] / 2; w[3] += w[3] / 2; }       // lean back to its register
+    else if (pos < target - 2) { w[1] /= 2; w[3] /= 2; w[2] += w[2] / 2; w[4] += w[4] / 2; }
+    int total = 0; for (int i = 0; i < 7; ++i) total += w[i];
+    int x = (int)(hash(mkey ^ 0x5152u, idx, 10) % (uint32_t)(total > 0 ? total : 1)), k = 0;
+    while (k < 6 && x >= w[k]) { x -= w[k]; k++; }
+    const int n = ScaleSize();
+    switch (k) {
+      case 0: return 0;
+      case 1: return -1;
+      case 2: return 1;
+      case 3: return -2;
+      case 4: return 2;
+      case 5: { const int l = (n == 5 ? 2 : 3) + (rnd100(mkey ^ 0x1EA9u, idx, 11) < 50 ? 1 : 0);   // a 4th or a 5th
+                return (pos <= target) ? l : -l; }
+      default: return (pos + n <= range) ? n : -n;
+    }
   }
-
-  void Melody(Event &ev, bool accent) {
-    int step = Step(accent);
+  // moves the melody one step and keeps it inside the range; strong notes land on chord tones
+  void Move(int step, bool accent, bool remate, int idx) {
     if (remate_cycle && step > 0) step = -step;
     pos += step;
     if (pos < 0) pos = (step < -2) ? pos + ScaleSize() : 1;
     if (pos > range) pos = (step > 2) ? pos - ScaleSize() : range - 1;
     if (pos < 0) pos = 0;
     if (pos > range) pos = range;
-    if (ev.remate) {
+    if (remate) {
       int best = pos, bestd = 99;
       for (int q = 0; q <= range; ++q) {
         if (((SemisOf(q) - CurChord().root) % 12 + 12) % 12 != 0) continue;
@@ -706,12 +784,38 @@ private:
         if (dd < bestd) { bestd = dd; best = q; }
       }
       pos = best;
-    } else if (accent && rnd100(mkey ^ 0x7777u, mp, 11) < 70) {
+    } else if ((accent || MP().chord >= 100) && rnd100(mkey ^ 0x7777u, idx, 11) < MP().chord) {
       for (int dd = 0; dd <= 3; ++dd) {
         if (pos - dd >= 0 && IsChordTone(SemisOf(pos - dd))) { pos -= dd; break; }
         if (pos + dd <= range && IsChordTone(SemisOf(pos + dd))) { pos += dd; break; }
       }
     }
+  }
+
+  // Acid: a 303 line on the semicorcheas. Notas = how many steps play, Adorno = accents, Empuje = slides
+  void AcidLine(Event &ev, int s0) {
+    const StyleDef &d = Def();
+    int n = 0;
+    for (int h = 0; h < 2; ++h) {
+      const int s = s0 + h, idx = mp * 2 + h;
+      const bool kick = d.a16 & (1ull << s);
+      const int chance = kick ? 80 : 20 + notas * 7 / 10;
+      if (rnd100(mkey ^ 0xAC1Du, MotifIdx(idx, d.beat * 2), 15) >= chance) continue;
+      const int mi = MotifIdx(idx, d.beat * 2);
+      Move(Step(mi), kick, false, mi);
+      ev.mel_at[n] = (uint8_t)(h * 3); ev.mel_semis[n] = (int8_t)SemisOf(pos);
+      ev.mel_notes |= 1u << n;
+      if (rnd100(mkey ^ 0xACC0u, mi, 16) < 10 + adorno * 6 / 10) ev.mel_acc |= 1u << n;
+      if (rnd100(mkey ^ 0x511Du, mi, 17) < empuje * 6 / 10) ev.mel_tie |= 1u << n;
+      n++;
+    }
+    if (n) melody_semis = ev.mel_semis[n - 1];
+    ev.mel_n = (uint8_t)n; ev.mel_main = 0;
+  }
+
+  void Melody(Event &ev, bool accent) {
+    const int mi = MotifIdx(mp, Def().beat);
+    Move(Step(mi), accent, ev.remate, mi);
     melody_semis = SemisOf(pos);
 
     int n = 0;
@@ -726,7 +830,7 @@ private:
       } else {
         add(0, melody_semis);
       }
-      ev.mel_n = (uint8_t)n; ev.mel_main = (uint8_t)(n - 1);
+      ev.mel_n = (uint8_t)n; ev.mel_main = (uint8_t)(n - 1); ev.mel_notes = 1u << ev.mel_main;
       return;
     }
 
@@ -756,7 +860,7 @@ private:
           break;
       }
     }
-    ev.mel_n = (uint8_t)n; ev.mel_main = 0;
+    ev.mel_n = (uint8_t)n; ev.mel_main = 0; ev.mel_notes = 1u;
   }
 };
 

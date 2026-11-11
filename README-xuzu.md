@@ -11,6 +11,7 @@ Código propio en `software/src/xuzu/`. Cambios al Phazerville: `OC_apps.cpp`, `
 
 ## Versiones
 
+- `xuzu-firmware/o_C-phazerville-v1.9.3_xuzu_v4.17.hex`: estilos Techno, Acid, Minimal, Dub techno y Electro, familia de armonía Electrónica, melodía con perfil propio por estilo, slide de Acid en la salida B y opción "Acento (acid)" en la salida D.
 - `xuzu-firmware/o_C-phazerville-v1.9.3_xuzu_v4.16r.hex`: la v4.16 reconstruida desde este código.
 - `xuzu-firmware/o_C-phazerville-v1.9.3_xuzu_compas_v4.16_original.hex`: la v4.16 original (su código se perdió), como respaldo.
 

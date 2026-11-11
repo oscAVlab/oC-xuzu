@@ -73,13 +73,16 @@ public:
     MidiClock();
 
     // B: melody / bass / arpeggio CV.  D: root, JF note or melody gate
-    int b_semis = melody_out;
-    if (p[OUT_B] == 1) b_semis = bass_semis;
-    else if (p[OUT_B] == 2) b_semis = arp_semis;
-    Out(1, (b_semis + 12 * (p[OCT_B] - 4)) * 128);
+    int b_cv = MelodyCV();
+    if (p[OUT_B] == 1) b_cv = bass_semis * 128;
+    else if (p[OUT_B] == 2) b_cv = arp_semis * 128;
+    Out(1, b_cv + 12 * (p[OCT_B] - 4) * 128);
+    if (glide_left > 0) --glide_left;
     if (p[OUT_D] == 2) GateOut(3, gate_d > 0);
+    else if (p[OUT_D] == 3) GateOut(3, acc_d > 0);
     else Out(3, ((p[OUT_D] ? engine.JFSemis() : engine.RootSemis()) + 12 * (p[OCT_D] - 4)) * 128);
     if (gate_d > 0) --gate_d;
+    if (acc_d > 0) --acc_d;
     if (flash_a) --flash_a;
     if (flash_c) --flash_c;
     if (msg_timer) --msg_timer;
@@ -185,7 +188,7 @@ private:
     compas::NUM_STYLES - 1, 1, 100, 100, 100, 1, 2,
     compas::NUM_FAMS - 1, compas::MAX_PROGS, 3, 1,
     compas::NUM_LOOPS - 1, compas::NUM_LOOPS - 1, 3, 100, compas::NUM_LOCKS - 1, 7, 7, 1,
-    1, 100, 21, 6, 6, 1, 2, 2,
+    1, 100, 21, 6, 6, 1, 2, 3,
     5, 16, 16, 15, 3, 3, 100, 2,
     2, 4, 1,
     1, 1, 1, NUM_CV_DEST - 1, NUM_CV_DEST - 1, NUM_CV_DEST - 1, 1,
@@ -209,7 +212,9 @@ private:
   int since_clock = MAX_PERIOD, period = MAX_PERIOD, tick_period = MAX_PERIOD, clock_count = 0;
   uint32_t raw = 0;
   int skip_clocks = 0, extra_clocks = 0;
-  int flash_a = 0, flash_c = 0, gate_d = 0;
+  int flash_a = 0, flash_c = 0, gate_d = 0, acc_d = 0;
+  int glide_left = 0, glide_len = 1, glide_from = 0;   // acid slide on output B, in DAC units
+  bool slide_next = false;
   int melody_out = 12, bass_semis = 5, arp_semis = 5, arp_i = 0, carp_i = 0;
   int cv_last[4] = {0, 0, 0, 0};
   int cv_preset = -1;
@@ -229,7 +234,7 @@ private:
     uint8_t fine_a, vel_a, fine_b, vel_b[compas::FINE], vmask[compas::NUM_EXTRA_VOICES], vvel[compas::NUM_EXTRA_VOICES];
     uint8_t comp, comp_vel, push, flags;
   };
-  struct MStep { uint8_t mel_n, mel_main, mel_at[4]; int8_t mel_semis[4]; int8_t root; };
+  struct MStep { uint8_t mel_n, mel_main, mel_at[4]; int8_t mel_semis[4]; int8_t root; uint8_t notes, acc, tie; };
   enum { RF_STRUM = 1, RF_REMATE = 2, RF_BURST = 4, RF_BEAT = 8, RF_CYCLE = 16, RF_CHORD = 32 };
   static constexpr int HIST = 192;   // 8 cycles of the longest style (24 corcheas)
   RStep hist_r[HIST];
@@ -239,7 +244,8 @@ private:
   static constexpr uint8_t VEL_NUM[8] = {1, 2, 3, 1, 3, 2, 3, 4};
   static constexpr uint8_t VEL_DEN[8] = {2, 3, 4, 1, 2, 1, 1, 1};
 
-  enum { Q_A = 1, Q_C, Q_VOICE, Q_OFF, Q_MEL, Q_MELORN, Q_CHORD, Q_CNOTE, Q_TICK, Q_BURST };
+  enum { Q_A = 1, Q_C, Q_VOICE, Q_OFF, Q_MEL, Q_MELORN, Q_CHORD, Q_CNOTE, Q_TICK, Q_BURST, Q_GATE };
+  enum { MF_ACC = 0x100, MF_TIE = 0x200 };   // flags on a Q_MEL argument
   static constexpr int QN = 96;
   int q_time[QN] = {0};
   int16_t q_arg[QN] = {0};
@@ -369,7 +375,8 @@ private:
         case Q_C: FireC(q_vel[i]); break;
         case Q_VOICE: Drum(VOICE_NOTE[q_arg[i]], q_vel[i]); break;
         case Q_OFF: if (p[MIDI]) usbMIDI.sendNoteOff(q_arg[i] & 0x7F, 0, q_arg[i] >> 8); break;
-        case Q_MEL: SetMelody(q_arg[i], q_vel[i], true); break;
+        case Q_MEL: SetMelody((int8_t)(q_arg[i] & 0xFF), q_vel[i], true, q_arg[i] & MF_TIE); break;
+        case Q_GATE: gate_d = q_arg[i]; if (q_vel[i]) acc_d = q_arg[i]; break;
         case Q_MELORN: SetMelody(q_arg[i], q_vel[i], false); break;
         case Q_CHORD: ChordHit(q_vel[i], q_arg[i]); break;
         case Q_CNOTE: if (p[MIDI]) usbMIDI.sendNoteOn(q_arg[i], q_vel[i], 2); break;
@@ -447,6 +454,8 @@ private:
                (ev.cycle_start ? RF_CYCLE : 0) | (ev.new_chord ? RF_CHORD : 0) | (BurstDecision(ev) ? RF_BURST : 0);
     ms.mel_n = ev.mel_n; ms.mel_main = ev.mel_main; ms.root = (int8_t)engine.RootSemis();
     for (int i = 0; i < 4; ++i) { ms.mel_at[i] = ev.mel_at[i]; ms.mel_semis[i] = ev.mel_semis[i]; }
+    ms.notes = ev.mel_notes | ((engine.Def().flags & compas::F_ACID) ? 0x80 : 0);   // bit 7: a semicorchea line
+    ms.acc = ev.mel_acc; ms.tie = ev.mel_tie;
 
     UpdateLayer(0, FreezeR(), engine.LoopTicks(engine.loop_r));
     UpdateLayer(1, FreezeM(), engine.LoopTicks(engine.loop_m));
@@ -542,13 +551,23 @@ private:
     for (int i = 0; i < ms.mel_n; ++i) {
       const int k = ms.mel_at[i];
       if (!live && k != k_only) continue;
-      const bool main = i == ms.mel_main;
-      const uint8_t vel = main ? 95 : 70;
+      const bool main = (ms.notes >> i) & 1;
+      const bool acc = (ms.acc >> i) & 1, tie = (ms.tie >> i) & 1;
+      const uint8_t vel = acc ? 122 : main ? 95 : 70;
       const int semis = ms.mel_semis[i] + shift;
       const int d = live ? (timed ? tp * k / compas::FINE : 0) : delay0;
       if (!timed && k > 0 && live) continue;
-      if (d == 0) SetMelody(semis, vel, main); else Enqueue(d, main ? Q_MEL : Q_MELORN, semis, vel);
-      if (main && p[OUT_D] == 2) gate_d = (d == 0 ? 0 : d) + (timed ? tp * 6 / 10 : HEMISPHERE_CLOCK_TICKS * 20);
+      if (d == 0) SetMelody(semis, vel, main, tie);
+      else Enqueue(d, main ? Q_MEL : Q_MELORN, (int16_t)((semis & 0xFF) | (tie ? MF_TIE : 0)), vel);
+      if (main) {
+        // semicorchea notes (acid) get a short gate, or one that reaches the next note when tied
+        const bool sixteenth = ms.notes & 0x80;
+        const int step = sixteenth ? tp / 2 : tp;
+        int len = timed ? (tie ? step + step / 4 : step * 6 / 10) : HEMISPHERE_CLOCK_TICKS * 20;
+        if (len > 32000) len = 32000;
+        if (d == 0) { gate_d = len; if (acc) acc_d = len; }
+        else Enqueue(d, Q_GATE, (int16_t)len, acc ? 1 : 0);
+      }
     }
   }
 
@@ -604,7 +623,17 @@ private:
     usbMIDI.sendNoteOn(note, vel, 10);
     Enqueue(DRUM_LEN, Q_OFF, (int16_t)(note | (10 << 8)), 0);
   }
-  void SetMelody(int semis, uint8_t vel, bool main) {
+  int MelodyCV() const {
+    const int to = melody_out * 128;
+    return glide_left > 0 ? to + (glide_from - to) * glide_left / glide_len : to;
+  }
+  void SetMelody(int semis, uint8_t vel, bool main, bool tie = false) {
+    if (main) {
+      // the note after a tied one slides into place (303 style), in half a semicorchea
+      if (slide_next) { glide_from = MelodyCV(); glide_len = glide_left = constrain(tick_period / 4, 17, 1700); }
+      else glide_left = 0;
+      slide_next = tie;
+    }
     if (main || p[ORN_CV]) melody_out = semis;
     if (!p[MIDI]) return;
     const int note = constrain(64 + semis + 12 * (p[OCT_B] - 4), 0, 127);
@@ -713,7 +742,7 @@ private:
     static const char *const REH[4] = {"No", "Septimas", "Dominantes", "Sustitucion"};
     static const char *const OUTA[3] = {"Acentos", "Bombo 4x4", "Ambos"};
     static const char *const OUTB[3] = {"Melodia", "Bajo", "Arpegio"};
-    static const char *const OUTD[3] = {"Raiz", "Just Friends", "Gate melodia"};
+    static const char *const OUTD[4] = {"Raiz", "Just Friends", "Gate melodia", "Acento (acid)"};
     static const char *const BMODE[6] = {"No", "Remate", "Acentos", "Cada tiempo", "Cada ciclo", "Azar"};
     static const char *const BLEN[4] = {"1/2 tiempo", "1 tiempo", "2 tiempos", "4 tiempos"};
     static const char *const CURVE[4] = {"Plana", "Sube", "Baja", "Campana"};
