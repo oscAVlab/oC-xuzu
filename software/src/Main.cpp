@@ -111,7 +111,7 @@ void FASTRUN CORE_timer_ISR() {
   if (OC::CORE::app_isr_enabled)
     OC::apps::ISR();
 #ifdef XUZU
-  { const uint32_t v[4] = {OC::DAC::value(0), OC::DAC::value(1), OC::DAC::value(2), OC::DAC::value(3)};
+  { uint32_t v[xuzu::fx::NCH]; for (int c = 0; c < xuzu::fx::NCH; ++c) v[c] = OC::DAC::value(c);
     xuzu::fx::Sample(v, OC::DigitalInputs::clocked() & 1); }
 #endif
 

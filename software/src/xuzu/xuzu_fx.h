@@ -12,14 +12,23 @@
 namespace xuzu {
 namespace fx {
 
+// outputs shown: 4 on the o_C, 8 on the o_C T4.1 (A..H), each in its own column
+#ifdef ARDUINO_TEENSY41
+static constexpr int NCH = 8;
+#else
+static constexpr int NCH = 4;
+#endif
+static constexpr int COLW = 128 / NCH;
+
 // ---------------------------------------------------------------- ISR side
 struct Ev { uint8_t ch, kind, height, strength; };   // kind 0 hit, 1 note, 2 beat
 static constexpr int EVQ = 32;
 inline volatile uint8_t ev_w = 0;
 inline uint8_t ev_r = 0;
 inline Ev evq[EVQ];
-inline uint16_t last_v[4] = {0, 0, 0, 0}, lo_v[4] = {65535, 65535, 65535, 65535}, hi_v[4] = {0, 0, 0, 0};
-inline uint16_t hold[4] = {0, 0, 0, 0};
+inline uint16_t last_v[NCH] = {}, lo_v[NCH], hi_v[NCH] = {};
+inline uint16_t hold[NCH] = {};
+inline bool lo_init = false;
 
 inline void Push(uint8_t ch, uint8_t kind, uint8_t height, uint8_t strength) {
   const uint8_t w = ev_w, n = (uint8_t)((w + 1) % EVQ);
@@ -30,7 +39,8 @@ inline void Push(uint8_t ch, uint8_t kind, uint8_t height, uint8_t strength) {
 
 // one call per ISR tick, after the app has set the outputs. dac[] = raw DAC codes, beat = TR1 clocked
 inline void Sample(const uint32_t *dac, bool beat) {
-  for (int c = 0; c < 4; ++c) {
+  if (!lo_init) { for (int c = 0; c < NCH; ++c) lo_v[c] = 65535; lo_init = true; }
+  for (int c = 0; c < NCH; ++c) {
     const uint16_t v = (uint16_t)dac[c];
     // follow the range each output moves in, so the height means something for any patch
     if (v < lo_v[c]) lo_v[c] = v; else if ((OC::CORE::ticks & 63) == 0 && lo_v[c] < v) lo_v[c]++;
@@ -51,7 +61,7 @@ struct P { int16_t x, y, vx, vy; uint8_t life, kind; };   // position in 1/64 px
 static constexpr int NP = 72;
 inline P parts[NP];
 struct Box { uint8_t step, max; };     // per output: a frame of its column that closes in
-inline Box boxes[4];
+inline Box boxes[NCH];
 inline uint32_t rng = 0x0A5C1AB5u;
 inline int energy = 0;          // activity, 0..1000
 inline int swirl = 0;
@@ -70,7 +80,7 @@ inline void Draw() {
   // what happened since the last frame
   while (ev_r != ev_w) {
     const Ev e = evq[ev_r]; ev_r = (uint8_t)((ev_r + 1) % EVQ);
-    const int x = 16 + 32 * e.ch, y = 60 - e.height * 56 / 63;
+    const int x = COLW / 2 + COLW * e.ch, y = 60 - e.height * 56 / 63;
     if (e.kind == 0) {                      // hit: a fountain of sparks from low in its column, and a ring
       const int n = 6 + e.strength / 2, hy = 46;
       for (int i = 0; i < n; ++i) Spawn(x, hy, R(201) - 100, -60 - R(140), 14 + R(14), 0);
@@ -108,18 +118,18 @@ inline void Draw() {
     else if (p.kind == 0 && p.life > 10) graphics.drawRect(px, py, 2, 2);
     else graphics.setPixel(px, py);
   }
-  for (int c = 0; c < 4; ++c) {             // a hit: its quarter of the screen, closing in
+  for (int c = 0; c < NCH; ++c) {           // a hit: its column of the screen, closing in
     Box &b = boxes[c];
     if (b.step >= b.max) continue;
-    const int i = b.step * 2;
-    if (i < 15) { graphics.drawFrame(32 * c + 1 + i, i, 30 - 2 * i, 64 - 2 * i); if (b.step == 0) graphics.drawFrame(32 * c + 2, 1, 28, 62); }
+    const int i = b.step * (COLW / 16);
+    if (i < COLW / 2 - 1) { graphics.drawFrame(COLW * c + 1 + i, i, COLW - 2 - 2 * i, 64 - 2 * i); if (b.step == 0) graphics.drawFrame(COLW * c + 2, 1, COLW - 4, 62); }
     if (frame & 1) b.step++;
   }
   // the 4 outputs as thick bars in their column that go up and down with the voltage
-  for (int c = 0; c < 4; ++c) {
+  for (int c = 0; c < NCH; ++c) {
     const int span = hi_v[c] - lo_v[c] > 2000 ? hi_v[c] - lo_v[c] : 2000;
     const int h = constrain((int)(last_v[c] - lo_v[c]) * 58 / span, 0, 58);
-    graphics.drawRect(32 * c + 6, 60 - h, 20, 3);
+    graphics.drawRect(COLW * c + COLW / 5, 60 - h, COLW - 2 * (COLW / 5), 3);
   }
 }
 

@@ -2,8 +2,8 @@
 # Build o_C Phazerville (T3.2) without PlatformIO. Usage: build.sh <software_dir> <out_dir> [extra flags...]
 set -e
 SW=$(realpath "$1"); OUT=$(realpath -m "$2"); shift 2
-HERE=$(dirname $(realpath "$0"))
-CORE=${TEENSY_CORE:-$HERE/tcores/teensy3}; EEP=${TEENSY_EEPROM:-$HERE/teeprom}
+HERE=$(dirname $(realpath "$0"))/..
+CORE=$HERE/tcores/teensy3; EEP=$HERE/teeprom
 mkdir -p $OUT/obj
 TAG=$(cd $SW && git rev-parse --short HEAD 2>/dev/null || echo nogit)
 COMMON="-mcpu=cortex-m4 -mthumb -fsingle-precision-constant -ffunction-sections -fdata-sections -nostdlib -Os --specs=nano.specs \

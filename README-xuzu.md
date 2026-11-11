@@ -44,3 +44,9 @@ g++ -std=gnu++17 -fsanitize=address,undefined -I stub -I ../../software/src engi
 g++ -std=gnu++17 -fsanitize=address,undefined -include stub/hem_stub.h -I stub -I ../../software/src applets_test.cpp -o applets_test && ./applets_test
 g++ -std=gnu++17 -I stub -I ../../software/src euclid_test.cpp -o euclid_test && ./euclid_test > cpp.txt && node e.js > js.txt && diff cpp.txt js.txt
 ```
+
+## o_C T4.1 (Teensy 4.1, O.R.N.8)
+- `xuzu-tools/build41.sh`: compila para la T4.1 sin PlatformIO (core teensy4 + librerias de Teensyduino de enero 2024: Audio, SD, SdFat, USBHost_t36, Wire, SPI, SerialFlash, LittleFS, MIDI 5.0.2, teensy-variable-playback, y las funciones de CMSIS-DSP 5.7.0 que usa Audio). Usa `xuzu-tools/ld/imxrt1062_t41.ld` (el del core con `.ARM.extab*` dentro de `.ARM.exidx`).
+- En la T4.1 los presets de Compas, Euclid y Brains van al archivo `XUZU.BIN` del LittleFS interno que monta Phazerville.
+- El salvapantallas muestra las 8 salidas (A..H) en 8 columnas.
+- `xuzu-firmware/o_C-osc[AV]lab_v4.23_T41-prueba.hex`: primera compilacion, sin probar en el modulo.

@@ -9,9 +9,15 @@
 //
 // Flashing a new .hex with the Teensy Loader erases the whole program flash, presets included:
 // backup -> flash -> restore.
+//
+// Teensy 4.1 (o_C T4.1): the same 3 drawers live in RAM and are kept in the file XUZU.BIN on the
+// LittleFS drive Phazerville already mounts in the program flash (PhzConfig::myfs).
 #pragma once
 #include <Arduino.h>
 #include <string.h>
+#ifdef __IMXRT1062__
+#include "PhzConfig.h"
+#endif
 
 namespace xuzu {
 
@@ -30,14 +36,31 @@ struct PresetHeader {
 };
 static constexpr uint16_t PRESET_MAGIC = 0x5A58;
 
+#ifdef __IMXRT1062__
+inline uint8_t drawer_ram[3 * SECTOR];
+inline bool drawer_loaded = false;
+static constexpr const char *DRAWER_FILE = "XUZU.BIN";
+inline const uint8_t *DrawerBase() {
+  if (!drawer_loaded) {
+    drawer_loaded = true;
+    memset(drawer_ram, 0xFF, sizeof(drawer_ram));
+    File f = PhzConfig::myfs.open(DRAWER_FILE, FILE_READ);
+    if (f) { f.read(drawer_ram, sizeof(drawer_ram)); f.close(); }
+  }
+  return drawer_ram;
+}
+#else
+inline const uint8_t *DrawerBase() { return (const uint8_t *)FLASH_BASE; }
+#endif
 inline const uint8_t *PresetAddr(int drawer, int slot) {
-  return (const uint8_t *)(FLASH_BASE + drawer * SECTOR + slot * PRESET_SIZE);
+  return DrawerBase() + drawer * SECTOR + slot * PRESET_SIZE;
 }
 inline bool PresetValid(int drawer, int slot, uint8_t version) {
   const PresetHeader *h = (const PresetHeader *)PresetAddr(drawer, slot);
   return h->magic == PRESET_MAGIC && h->version == version;
 }
 
+#ifndef __IMXRT1062__
 // ---- low level: Kinetis FTFL commands, executed from RAM with interrupts off
 FASTRUN static uint8_t FlashCommand() {
   __disable_irq();
@@ -63,8 +86,23 @@ static bool FlashProgramWord(uint32_t addr, uint32_t data) {
   return FlashCommand() == 0;
 }
 
+#endif
+
 // one sector worth of RAM, shared by preset saving and SysEx restore
 DMAMEM static uint32_t sector_buf[SECTOR / 4];
+
+#ifdef __IMXRT1062__
+// the sector buffer goes into the RAM drawer, and the 3 drawers to the file
+static bool FlashWriteSector(int drawer) {
+  DrawerBase();
+  memcpy(drawer_ram + drawer * SECTOR, sector_buf, SECTOR);
+  File f = PhzConfig::myfs.open(DRAWER_FILE, FILE_WRITE_BEGIN);
+  if (!f) return false;
+  const size_t n = f.write(drawer_ram, sizeof(drawer_ram));
+  f.close();
+  return n == sizeof(drawer_ram);
+}
+#else
 
 // writes the RAM sector buffer to the sector of `drawer`
 static bool FlashWriteSector(int drawer) {
@@ -78,13 +116,14 @@ static bool FlashWriteSector(int drawer) {
   FMC_PFB0CR |= 0xF << 20;
   return memcmp((const void *)addr, sector_buf, SECTOR) == 0;
 }
+#endif
 
 // saves `size` bytes (header included, filled in here) to a preset slot
 static bool SavePreset(int drawer, int slot, uint8_t version, void *data, uint8_t size) {
   if (slot < 0 || slot >= NUM_PRESETS || size > PRESET_SIZE || size < sizeof(PresetHeader)) return false;
   PresetHeader *h = (PresetHeader *)data;
   h->magic = PRESET_MAGIC; h->version = version; h->size = size;
-  memcpy(sector_buf, (const void *)(FLASH_BASE + drawer * SECTOR), SECTOR);
+  memcpy(sector_buf, DrawerBase() + drawer * SECTOR, SECTOR);
   uint8_t *dst = (uint8_t *)sector_buf + slot * PRESET_SIZE;
   memset(dst, 0xFF, PRESET_SIZE);
   memcpy(dst, data, size);
@@ -99,11 +138,11 @@ static bool LoadPreset(int drawer, int slot, uint8_t version, void *data, uint8_
 }
 
 // ---- SysEx backup helpers (byte offset 0..BACKUP_BYTES-1 inside the drawer area)
-inline uint8_t BackupRead(uint32_t offset) { return *(const uint8_t *)(FLASH_BASE + offset); }
+inline uint8_t BackupRead(uint32_t offset) { return DrawerBase()[offset]; }
 // restore: bytes land in the RAM buffer; when a sector is complete it is written
-static uint8_t restore_sector = 0xFF;
-static void RestoreBegin() { restore_sector = 0xFF; }
-static bool RestoreWrite(uint32_t offset, const uint8_t *src, int n) {
+inline uint8_t restore_sector = 0xFF;
+inline void RestoreBegin() { restore_sector = 0xFF; }
+inline bool RestoreWrite(uint32_t offset, const uint8_t *src, int n) {
   const int sec = offset / SECTOR;
   if (sec >= 3) return false;
   if (restore_sector != sec) { memset(sector_buf, 0xFF, SECTOR); restore_sector = sec; }
