@@ -2,7 +2,7 @@
 // The ISR watches the 4 outputs and TR1. A jump up on an output (a trigger or gate) is a burst of
 // sparks and its quarter of the screen lights up as a box that closes in; a new note (a step in a CV)
 // is a bubble that rises; TR1 gives the whole cloud a kick. Each output has its own column
-// (A B C D, left to right); the height is the voltage, shown by the bars at the bottom.
+// (A B C D, left to right); the height is the voltage, shown by a thick bar that moves up and down.
 // The more is going on, the more the cloud swirls.
 #pragma once
 #include <stdint.h>
@@ -112,15 +112,14 @@ inline void Draw() {
     Box &b = boxes[c];
     if (b.step >= b.max) continue;
     const int i = b.step * 2;
-    if (i < 13) { graphics.drawFrame(32 * c + 1 + i, i, 30 - 2 * i, 57 - 2 * i); if (b.step == 0) graphics.drawFrame(32 * c + 2, 1, 28, 55); }   // above the bars
+    if (i < 15) { graphics.drawFrame(32 * c + 1 + i, i, 30 - 2 * i, 64 - 2 * i); if (b.step == 0) graphics.drawFrame(32 * c + 2, 1, 28, 62); }
     if (frame & 1) b.step++;
   }
-  // the 4 outputs as bars at the bottom of their column: the width is the voltage
+  // the 4 outputs as thick bars in their column that go up and down with the voltage
   for (int c = 0; c < 4; ++c) {
     const int span = hi_v[c] - lo_v[c] > 2000 ? hi_v[c] - lo_v[c] : 2000;
-    const int w = constrain((int)(last_v[c] - lo_v[c]) * 28 / span, 0, 28);
-    graphics.drawFrame(32 * c + 1, 59, 30, 5);
-    if (w > 0) graphics.drawRect(32 * c + 2, 60, w, 3);
+    const int h = constrain((int)(last_v[c] - lo_v[c]) * 58 / span, 0, 58);
+    graphics.drawRect(32 * c + 6, 60 - h, 20, 3);
   }
 }
 
