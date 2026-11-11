@@ -85,7 +85,7 @@ inline void Draw() {
       energy += 15;
     } else {                                // TR1: kick the whole cloud and a ring in the middle
       for (int i = 0; i < NP; ++i) if (parts[i].life) { parts[i].vx += (parts[i].x / 64 < 64 ? -24 : 24); parts[i].vy -= 20; }
-      AddRing(64, 32, 20);
+      AddRing(64, 32, 6);
       swirl = 1 - swirl;
     }
   }
