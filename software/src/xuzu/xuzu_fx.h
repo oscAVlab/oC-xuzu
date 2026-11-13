@@ -131,6 +131,12 @@ inline void Draw() {
     const int h = constrain((int)(last_v[c] - lo_v[c]) * 58 / span, 0, 58);
     graphics.drawRect(COLW * c + COLW / 5, 60 - h, COLW - 2 * (COLW / 5), 3);
   }
+  // firma: z con caron, chiquita, centrada arriba
+  static const uint8_t firma[6] = { 0b1010, 0b0100, 0b1111, 0b0010, 0b0100, 0b1111 };
+  graphics.clearRect(61, 0, 6, 7);
+  for (int y = 0; y < 6; ++y)
+    for (int x = 0; x < 4; ++x)
+      if (firma[y] & (8 >> x)) graphics.setPixel(62 + x, y);
 }
 
 } // namespace fx

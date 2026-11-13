@@ -14,6 +14,7 @@ Código propio en `software/src/xuzu/`. Cambios al Phazerville: `OC_apps.cpp`, `
 - `xuzu-firmware/o_C-osc[AV]lab_v4.20.hex`: revision de estilos. Electronicos con hats fijos en el contratiempo (snare en 2 y 4 en Electro) y bajo propio en Minimal, Electro y Dub techno (stab del acorde); melodias andinas, bossa y alegrias mas vivas sobre la figura del ritmo.
 - `xuzu-firmware/o_C-osc[AV]lab_v4.21.hex`: en Techno, Minimal, Dub techno y Electro el bajo y la melodia se separan. El motor genera una linea de bajo propia del estilo (Bajo "Linea estilo", o la salida B como bajo; MIDI canal 3) y una melodia lead una octava arriba (salida de melodia, MIDI canal 1). En el applet Hemisphere, "Raiz+Mel" sigue la linea de bajo en estos estilos. Acid se queda con su 303 sola.
 - `xuzu-firmware/o_C-osc[AV]lab_v4.22.hex`: Euclid x4 sigue a Compas. Melodia "Acorde" (notas del acorde que suena) y "Mel. Compas" (la nota de la melodia de Compas) en cada golpe. En Hemispheres sigue al applet Compas; en la app, a un Compas interno de armonia (pagina Armonia: Estilo, Armonia, Progresion). Applet Compas con salida Rell+Mel. Salvapantallas: sin anillo de reloj, rectangulos por columna en cada trigger, barras de CV mas gruesas.
+- `xuzu-firmware/o_C-osc[AV]lab_v4.24.hex`: firma **ž** chiquita (4x6 px) centrada arriba en el salvapantallas.
 - `xuzu-firmware/o_C-osc[AV]lab_v4.23.hex`: salvapantallas, las barras de CV vuelven a subir y bajar con el voltaje (ahora gruesas) y los rectangulos de trigger ocupan toda la columna.
 - `xuzu-firmware/o_C-osc[AV]lab_v4.19.hex`: Techno toca un bassline en semicorcheas (riff que esquiva el bombo: rolling, offbeat, galope), Densidad elige la figura y Adorno los acentos.
 - `xuzu-firmware/o_C-osc[AV]lab_v4.18.hex`: salvapantallas "Particulas" que reacciona a las 4 salidas y a TR1 (preview en `particulas-preview.gif`); los applets Compas, Eucl x4 y Brains controlan todo (lista de parametros, CV1/CV2 asignables, presets 1-16 de las apps). Quitados los 15 applets de reloj y ritmo de Phazerville.
@@ -50,3 +51,4 @@ g++ -std=gnu++17 -I stub -I ../../software/src euclid_test.cpp -o euclid_test &&
 - En la T4.1 los presets de Compas, Euclid y Brains van al archivo `XUZU.BIN` del LittleFS interno que monta Phazerville.
 - El salvapantallas muestra las 8 salidas (A..H) en 8 columnas.
 - `xuzu-firmware/o_C-osc[AV]lab_v4.23_T41-prueba.hex`: primera compilacion, sin probar en el modulo.
+- `xuzu-firmware/o_C-osc[AV]lab_v4.24_T41-prueba.hex`: igual con la firma ž, sin probar en el modulo.
