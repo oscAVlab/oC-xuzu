@@ -109,6 +109,9 @@
 #include "xuzu/HEM_Compas.h"
 #include "xuzu/HEM_EuclX4.h"
 #include "xuzu/HEM_Brains.h"
+#if defined(ARDUINO_TEENSY41)
+#include "xuzu/HEM_JF.h"
+#endif
 #endif
 
 template<class A>
@@ -167,6 +170,11 @@ AppletRegistry reg{
     DeclareApplet<LowerRenz>{21, 0x01},
     DeclareApplet<hMIDIIn>{150, 0x20},
     DeclareApplet<hMIDIOut>{27, 0x20},
+#if defined(ARDUINO_TEENSY41)
+    DeclareApplet<JFCtrl>{175, 0x20},
+    DeclareApplet<JFGeode>{174, 0x02},
+    DeclareApplet<JFSynth>{173, 0x08},
+#endif
     DeclareApplet<MixerBal>{33, 0x10},
     DeclareApplet<MultiScale>{73, 0x08},
     DeclareApplet<ProbabilityMelody>{62, 0x04},

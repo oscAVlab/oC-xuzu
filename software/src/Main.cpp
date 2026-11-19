@@ -40,6 +40,7 @@
 #include "OC_options.h"
 #ifdef XUZU
 #include "xuzu/xuzu_fx.h"
+#include "xuzu/jf_ii.h"
 #endif
 #include "src/drivers/display.h"
 #include "src/drivers/ADC/OC_util_ADC.h"
@@ -211,6 +212,9 @@ void setup() {
   if (I2S2_Audio_ADC && I2S2_Audio_DAC) {
     OC::AudioIO::Init();
   }
+  #ifdef XUZU
+  if (I2C_Expansion) jf::Begin();   // Just Friends over ii (pins 18 SDA / 19 SCL)
+  #endif
   #endif
 
   // initialize LittleFS for config files
@@ -285,6 +289,9 @@ void FASTRUN loop() {
     // Run current app
     if (OC::CORE::app_loop_enabled)
       OC::apps::current_app->loop();
+#ifdef XUZU
+    jf::Flush();                      // Just Friends: send what the applets queued
+#endif
 
     // UI events
     if (OC::UI_MODE_APP_SETTINGS == ui_mode) {
