@@ -6,12 +6,16 @@
 // Outputs, patch "T1 V1 T2 V2": A trigger V1, B pitch V1, C trigger V2, D pitch V2 (V1 = T1, V2 = T3)
 // MIDI: T1 ch 11, T2 ch 12, T3 ch 13, T4 ch 14
 // Right encoder: turn = track, press = mute.  Long left: new seed for the track.  Long DOWN: one-bar fill.
+// o_C T4.1 (Phažerville): left encoder turn = parameter, press = next page; right encoder turn = edit, press = mute;
+//   A / B = page; X / Y = track; center = next preset, hold = save.  Patch "8 salidas" (default): A..H = T1 trig, T1 pitch,
+//   T2 trig, T2 pitch, T3 ..., T4 ...  With the other patches E-H = T3 trig, T3 pitch, T4 trig, T4 pitch.  CV5-CV8 assignable.
 
 #ifdef ENABLE_APP_EUCLID4
 
 #include "HSApplication.h"
 #include "xuzu/euclid4_engine.h"
 #include "xuzu/xuzu_flash.h"
+#include "xuzu/xuzu_t41.h"
 
 euclid4::Engine euclid_engine;
 
@@ -25,7 +29,7 @@ public:
     TIPO, MEL, TONO, OCTV, GATE, SCALE, ROOT,
     MNOTE, MCHORD, MCHAN, MIDI, MCLK,
     PATCH, VOZ1, VOZ2, OUTA, OUTB, OUTC, OUTD,
-    CV1D, CV1T, CV2D, CV2T, CV3D, CV3T,
+    CV1D, CV1T, CV2D, CV2T, CV3D, CV3T, XUZU_T41(CV5D, CV5T, CV6D, CV6T, CV7D, CV7T, CV8D, CV8T,)
     CLK, BPM, DESPL, TR2, TR3, TR4,
     PRESET, LOADP, SAVEP, PATRON, MORPH, GOPAT, SAVEM, SAVESTATE,
     H_STYLE, H_FAM, H_PROG,
@@ -34,8 +38,9 @@ public:
   enum CvDest { CV_NADA, CV_HITS, CV_ROT, CV_STEPS, CV_LEN, CV_PROB, CV_AZAR, CV_RATIO, CV_BURST, CV_TONO, CV_MUTE, CV_FILL, CV_PATRON, NUM_CVD };
   enum OutSrc { O_T1, O_T2, O_T3, O_T4, O_P1, O_P2, O_P3, O_P4, O_CLK16, O_RESET, NUM_OUTSRC };
 
+  static constexpr int NCV = XUZU_T41_ELSE(7, 3);     // assignable CV inputs
   struct __attribute__((packed)) Rack {
-    uint8_t patch, voz1, voz2, out[4], cvd[3], cvt[3], clk, bpm, tr[3], midi, mclk, pattern, morph, preset;
+    uint8_t patch, voz1, voz2, out[4], cvd[NCV], cvt[NCV], clk, bpm, tr[3], midi, mclk, pattern, morph, preset;
   };
   struct __attribute__((packed)) State { euclid4::Track t[euclid4::NT]; uint8_t swing, scale, root; Rack rack; uint8_t h_style, h_fam, h_prog; };
   struct FlashPreset { xuzu::PresetHeader h; euclid4::Track t[euclid4::NT]; uint8_t swing, scale, root; uint8_t h_style, h_fam, h_prog; };
@@ -46,6 +51,10 @@ public:
   void Start() {
     euclid_engine.Init();
     rack = Rack{0, 0, 2, {O_T1, O_P1, O_T3, O_P3}, {CV_HITS, CV_ROT, CV_TONO}, {1, 2, 2}, 0, 125, {TR_RESET, TR_FILL, TR_MUTE1}, 1, 0, 0, 0, 0};
+#if XUZU_IS_T41
+    rack.patch = 3;                                   // 8 salidas: each track trigger + pitch
+    for (int i = 3; i < NCV; ++i) { rack.cvd[i] = CV_NADA; rack.cvt[i] = 4; }
+#endif
     for (int k = 0; k < 4; ++k) mem.t[k] = euclid_engine.t[k];
     mem.swing = 0;
   }
@@ -147,7 +156,18 @@ public:
     switch (control) {
     case OC::CONTROL_BUTTON_UP:   page = (page + NUM_PAGES - 1) % NUM_PAGES; cursor = 0; break;
     case OC::CONTROL_BUTTON_DOWN: page = (page + 1) % NUM_PAGES; cursor = 0; break;
+#if XUZU_IS_T41
+    case OC::CONTROL_BUTTON_L:    page = (page + 1) % NUM_PAGES; cursor = 0; break;
+    case OC::CONTROL_BUTTON_UP2:  track = (track + 3) % 4; break;
+    case OC::CONTROL_BUTTON_DOWN2: track = (track + 1) % 4; break;
+    case OC::CONTROL_BUTTON_M: {
+      const int s = xuzu::NextPreset(rack.preset, xuzu::NUM_PRESETS, [](int k) { return xuzu::PresetValid(xuzu::D_EUCLID, k, 1); });
+      if (s < 0) Message("Sin presets"); else { rack.preset = s; LoadPreset(s); }
+      break;
+    }
+#else
     case OC::CONTROL_BUTTON_L:    cursor = (cursor + 1) % PAGE_LEN[page]; break;
+#endif
     case OC::CONTROL_BUTTON_R:    mutes[track] = !mutes[track]; break;
     default: break;
     }
@@ -155,9 +175,17 @@ public:
   void OnLongPress(int control) {
     if (control == OC::CONTROL_BUTTON_DOWN) fill_bar = 16;
     if (control == OC::CONTROL_BUTTON_L) { E().NewSeed(track); Message("Nueva semilla"); }
+#if XUZU_IS_T41
+    if (control == OC::CONTROL_BUTTON_M) SavePreset(rack.preset);
+#endif
   }
+#if XUZU_IS_T41
+  void OnLeftEncoderMove(int dir) { cursor = constrain(cursor + dir, 0, PAGE_LEN[page] - 1); }
+  void OnRightEncoderMove(int dir) { Edit(PAGE_PARAMS[page][cursor], dir); }
+#else
   void OnLeftEncoderMove(int dir) { Edit(PAGE_PARAMS[page][cursor], dir); }
   void OnRightEncoderMove(int dir) { track = constrain(track + dir, 0, 3); }
+#endif
 
   // ------------------------------------------------------------------ storage
   size_t SaveState(void *dst) {
@@ -194,9 +222,9 @@ public:
   }
 
 private:
-  static constexpr int NUM_PAGES = 10;
-  static constexpr const char *PAGE_NAMES[NUM_PAGES] = {"Euclides", "Azar", "Rafaga", "Nota", "Armonia", "MIDI", "Salidas", "Entradas CV", "Reloj / TR", "Patrones"};
-  static constexpr int PAGE_LEN[NUM_PAGES] = {5, 5, 5, 7, 3, 5, 7, 6, 6, 8};
+  static constexpr int NUM_PAGES = XUZU_T41_ELSE(11, 10);
+  static constexpr const char *PAGE_NAMES[NUM_PAGES] = {"Euclides", "Azar", "Rafaga", "Nota", "Armonia", "MIDI", "Salidas", "Entradas CV", XUZU_T41("CV 5-8",) "Reloj / TR", "Patrones"};
+  static constexpr int PAGE_LEN[NUM_PAGES] = {5, 5, 5, 7, 3, 5, 7, 6, XUZU_T41(8,) 6, 8};
   static constexpr uint8_t PAGE_PARAMS[NUM_PAGES][8] = {
     {LEN, STEPS, HITS, ROT, RATIO},
     {PROB, AZAR, SEMILLA, MUTE, SWING},
@@ -206,6 +234,7 @@ private:
     {MNOTE, MCHORD, MCHAN, MIDI, MCLK},
     {PATCH, VOZ1, VOZ2, OUTA, OUTB, OUTC, OUTD},
     {CV1D, CV1T, CV2D, CV2T, CV3D, CV3T},
+    XUZU_T41({CV5D, CV5T, CV6D, CV6T, CV7D, CV7T, CV8D, CV8T},)
     {CLK, BPM, DESPL, TR2, TR3, TR4},
     {PRESET, LOADP, SAVEP, PATRON, MORPH, GOPAT, SAVEM, SAVESTATE}};
   static constexpr const char *NAMES[NUM_PARAMS] = {
@@ -216,6 +245,7 @@ private:
     "Nota MIDI", "Acorde MIDI", "Canal MIDI", "MIDI USB", "Clock MIDI",
     "Patch", "Voz 1", "Voz 2", "Salida A", "Salida B", "Salida C", "Salida D",
     "CV1", "CV1 pista", "CV2", "CV2 pista", "CV3", "CV3 pista",
+    XUZU_T41("CV5", "CV5 pista", "CV6", "CV6 pista", "CV7", "CV7 pista", "CV8", "CV8 pista",)
     "Reloj", "BPM interno", "Desplazar", "TR2", "TR3", "TR4",
     "Preset", "Cargar preset", "Guardar preset", "Patron", "Morph", "Ir al patron", "Guardar en M", "Guardar estado",
     "Estilo", "Armonia", "Progresion"};
@@ -234,7 +264,7 @@ private:
   bool mutes[4] = {false, false, false, false}, tr_mute[4] = {false, false, false, false};
   bool fill_gate = false, cv_fill = false; int fill_bar = 0;
   int flash[4] = {0, 0, 0, 0}, cycle_flash = 0;
-  int cv_last[3] = {0, 0, 0}, cv_preset = -1, cv_patron = -1;
+  int cv_last[7] = {0, 0, 0, 0, 0, 0, 0}, cv_preset = -1, cv_patron = -1;
   bool clock_out_state = false;
   const char *msg = ""; int msg_timer = 0;
 
@@ -247,8 +277,8 @@ private:
     for (int k = 0; k < 4; ++k) { e.cv_hits[k] = e.cv_rot[k] = e.cv_steps[k] = e.cv_len[k] = e.cv_prob[k] = e.cv_azar[k] = 0;
                                   e.cv_ratio[k] = e.cv_burst[k] = e.cv_pitch[k] = 0; e.cv_mute[k] = false; }
     cv_fill = false;
-    for (int i = 0; i < 3; ++i) {
-      const int cv = frame.inputs[i];
+    for (int i = 0; i < NCV; ++i) {
+      const int cv = frame.inputs[xuzu::CvInput(i)];
       const int d = rack.cvd[i];
       if (d == CV_NADA) continue;
       for (int k = 0; k < 4; ++k) {
@@ -282,11 +312,18 @@ private:
   void Outputs() {
     euclid4::Engine &e = E();
     for (int k = 0; k < 4; ++k) if (e.hit[k]) flash[k] = 600;
-    int src[4];
+    int src[8];
     if (rack.patch == 0)      { src[0] = O_T1 + rack.voz1; src[1] = O_P1 + rack.voz1; src[2] = O_T1 + rack.voz2; src[3] = O_P1 + rack.voz2; }
     else if (rack.patch == 1) { src[0] = O_T1 + rack.voz1; src[1] = O_T1 + rack.voz2; src[2] = O_P1 + rack.voz1; src[3] = O_P1 + rack.voz2; }
-    else for (int i = 0; i < 4; ++i) src[i] = rack.out[i];
-    for (int ch = 0; ch < 4; ++ch) {
+    else if (rack.patch == 2) for (int i = 0; i < 4; ++i) src[i] = rack.out[i];
+    else { src[0] = O_T1; src[1] = O_P1; src[2] = O_T2; src[3] = O_P2; }       // 3: 8 salidas (T4.1)
+#if XUZU_IS_T41
+    constexpr int NOUT = 8;
+    src[4] = O_T3; src[5] = O_P3; src[6] = O_T4; src[7] = O_P4;     // E-H: T3 and T4, whatever the patch
+#else
+    constexpr int NOUT = 4;
+#endif
+    for (int ch = 0; ch < NOUT; ++ch) {
       const int s = src[ch];
       if (s <= O_T4) {
         const int k = s - O_T1;
@@ -356,10 +393,10 @@ private:
       case MEL: hi = euclid4::NUM_MEL - 1; break; case TONO: hi = 127; break; case OCTV: lo = -3; hi = 3; break;
       case SCALE: hi = euclid4::NUM_SCALES - 1; break; case ROOT: hi = 11; break;
       case MNOTE: hi = 127; break; case MCHORD: hi = euclid4::NUM_CHORDS - 1; break; case MCHAN: lo = 1; hi = 16; break;
-      case PATCH: hi = 2; break; case VOZ1: case VOZ2: hi = 3; break;
+      case PATCH: hi = XUZU_T41_ELSE(3, 2); break; case VOZ1: case VOZ2: hi = 3; break;
       case OUTA: case OUTB: case OUTC: case OUTD: hi = NUM_OUTSRC - 1; break;
-      case CV1D: case CV2D: case CV3D: hi = NUM_CVD - 1; break;
-      case CV1T: case CV2T: case CV3T: hi = 4; break;
+      case CV1D: case CV2D: case CV3D: XUZU_T41(case CV5D: case CV6D: case CV7D: case CV8D:) hi = NUM_CVD - 1; break;
+      case CV1T: case CV2T: case CV3T: XUZU_T41(case CV5T: case CV6T: case CV7T: case CV8T:) hi = 4; break;
       case CLK: hi = 2; break; case BPM: lo = 40; hi = 240; break;
       case TR2: case TR3: case TR4: hi = NUM_TR - 1; break;
       case PRESET: hi = xuzu::NUM_PRESETS - 1; break;
@@ -378,6 +415,10 @@ private:
       case OUTA: case OUTB: case OUTC: case OUTD: return rack.out[prm - OUTA];
       case CV1D: return rack.cvd[0]; case CV2D: return rack.cvd[1]; case CV3D: return rack.cvd[2];
       case CV1T: return rack.cvt[0]; case CV2T: return rack.cvt[1]; case CV3T: return rack.cvt[2];
+#if XUZU_IS_T41
+      case CV5D: case CV6D: case CV7D: case CV8D: return rack.cvd[3 + (prm - CV5D) / 2];
+      case CV5T: case CV6T: case CV7T: case CV8T: return rack.cvt[3 + (prm - CV5T) / 2];
+#endif
       case CLK: return rack.clk; case BPM: return rack.bpm; case DESPL: return despl;
       case TR2: case TR3: case TR4: return rack.tr[prm - TR2];
       case PRESET: return rack.preset; case PATRON: return rack.pattern; case MORPH: return rack.morph;
@@ -400,6 +441,10 @@ private:
       case OUTA: case OUTB: case OUTC: case OUTD: rack.out[prm - OUTA] = v; break;
       case CV1D: rack.cvd[0] = v; break; case CV2D: rack.cvd[1] = v; break; case CV3D: rack.cvd[2] = v; break;
       case CV1T: rack.cvt[0] = v; break; case CV2T: rack.cvt[1] = v; break; case CV3T: rack.cvt[2] = v; break;
+#if XUZU_IS_T41
+      case CV5D: case CV6D: case CV7D: case CV8D: rack.cvd[3 + (prm - CV5D) / 2] = v; break;
+      case CV5T: case CV6T: case CV7T: case CV8T: rack.cvt[3 + (prm - CV5T) / 2] = v; break;
+#endif
       case CLK: rack.clk = v; break; case BPM: rack.bpm = v; break;
       case TR2: case TR3: case TR4: rack.tr[prm - TR2] = v; break;
       case PRESET: rack.preset = v; break; case PATRON: rack.pattern = v; break; case MORPH: rack.morph = v; break;
@@ -428,7 +473,7 @@ private:
     static const char *const OSN[NUM_OUTSRC] = {"T1 trig", "T2 trig", "T3 trig", "T4 trig", "T1 tono", "T2 tono", "T3 tono", "T4 tono", "Reloj 1/16", "Reset ciclo"};
     static const char *const MORPHN[6] = {"Directo", "1 compas", "2 compases", "4 compases", "8 compases", "16 compases"};
     static const char *const CLKN[3] = {"x4 Pam", "x2 Pam", "Interno"};
-    static const char *const PATCHN[3] = {"T1 V1 T2 V2", "T1 T2 V1 V2", "Libre"};
+    static const char *const PATCHN[4] = {"T1 V1 T2 V2", "T1 T2 V1 V2", "Libre", "8 salidas"};
     const int v = Get(prm);
     switch (prm) {
       case LEN: case STEPS: gfxPrint(v); gfxPrint(" pasos"); break;
@@ -448,8 +493,8 @@ private:
       case PATCH: gfxPrint(PATCHN[v]); break;
       case VOZ1: case VOZ2: gfxPrint("Pista "); gfxPrint(v + 1); break;
       case OUTA: case OUTB: case OUTC: case OUTD: if (rack.patch != 2) gfxPrint("(patch) "); gfxPrint(OSN[v]); break;
-      case CV1D: case CV2D: case CV3D: gfxPrint(CVN[v]); break;
-      case CV1T: case CV2T: case CV3T: if (v == 4) gfxPrint("Todas"); else { gfxPrint("T"); gfxPrint(v + 1); } break;
+      case CV1D: case CV2D: case CV3D: XUZU_T41(case CV5D: case CV6D: case CV7D: case CV8D:) gfxPrint(CVN[v]); break;
+      case CV1T: case CV2T: case CV3T: XUZU_T41(case CV5T: case CV6T: case CV7T: case CV8T:) if (v == 4) gfxPrint("Todas"); else { gfxPrint("T"); gfxPrint(v + 1); } break;
       case CLK: gfxPrint(CLKN[v]); break;
       case TR2: case TR3: case TR4: gfxPrint(TRN[v]); break;
       case DESPL: if (v > 0) gfxPrint("+"); gfxPrint(v); break;

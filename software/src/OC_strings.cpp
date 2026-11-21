@@ -6,10 +6,14 @@ namespace OC {
 
 #ifdef XUZU
 #ifndef XUZU_VERSION
-#define XUZU_VERSION "v4.24"
+#define XUZU_VERSION "v4.26"
 #endif
   // oscAVlab firmware: our version on screen, Phazerville's in the release name
+#if defined(ARDUINO_TEENSY41)
+  const char * const VERSION = "Pha\x7F" "erville " XUZU_VERSION;   // the Tunefish firmware: Phažerville (0x7F = ž in the font)
+#else
   const char * const VERSION = "osc[AV]lab " XUZU_VERSION;
+#endif
 #else
   const char * const VERSION =
 #include "OC_version.h"
@@ -35,6 +39,9 @@ namespace OC {
 #if defined(VOR)
   const char * const NAME = "Plum Audio O_C+";
   const char * const SHORT_NAME = "OC+";
+#elif defined(ARDUINO_TEENSY41) && defined(XUZU)
+  const char * const NAME = "osc[AV]lab";
+  const char * const SHORT_NAME = "oC8";
 #elif defined(ARDUINO_TEENSY41)
   const char * const NAME = "O.R.N.8";
   const char * const SHORT_NAME = "oC8";

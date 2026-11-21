@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include "xuzu/compas_engine.h"
 #include "xuzu/euclid4_engine.h"
+#include "xuzu/xuzu_t41.h"
 
 namespace brains {
 
@@ -16,6 +17,7 @@ static const char *const SOURCE_NAMES[NUM_SOURCES] = {"Apagado", "Euclid T1", "E
 
 struct __attribute__((packed)) Slot {
   uint8_t source, model, c_note, c_val, d_note, d_val; int8_t oct;   // values 0..100 = 0..5 V
+  XUZU_T41(uint8_t e_val, f_val, g_val;)          // o_C T4.1: outputs E MORPH, F HARMONICS, G TIMBRE (H = the note, V/OCT)
 };
 enum MacroDest { MD_HITS = 0, MD_PROB, MD_AZAR, MD_ROT, MD_DENS, MD_SOLT, MD_SLOTS, NUM_MACRO };
 
@@ -36,6 +38,7 @@ public:
 
   // outputs
   int out_model = 0, out_c = 0, out_d = 0;      // DAC values (128 per semitone, 1536 per volt)
+  XUZU_T41(int out_e = 0, out_f = 0, out_g = 0, out_h = 0;)
   bool trig = false;                            // a trigger this ISR tick
   int last_slot = -1;
   bool looping = false;
@@ -43,7 +46,8 @@ public:
   compas::Engine compas;
 
   void Init() {
-    static const Slot DEF[4] = {{S_E1, 0, 0, 50, 0, 50, 0}, {S_E2, 1, 0, 50, 0, 50, 0}, {S_C_BASS, 2, 1, 50, 0, 50, -1}, {S_C_MEL, 3, 1, 50, 0, 50, 0}};
+    static const Slot DEF[4] = {{S_E1, 0, 0, 50, 0, 50, 0 XUZU_T41(, 50, 50, 50)}, {S_E2, 1, 0, 50, 0, 50, 0 XUZU_T41(, 50, 50, 50)},
+                                {S_C_BASS, 2, 1, 50, 0, 50, -1 XUZU_T41(, 50, 50, 50)}, {S_C_MEL, 3, 1, 50, 0, 50, 0 XUZU_T41(, 50, 50, 50)}};
     for (int i = 0; i < 4; ++i) s.slot[i] = DEF[i];
     s.c_style = compas::S_BULERIA; s.c_fam = compas::H_AUTO; s.c_dens = 55; s.c_solt = 15;
     s.macro_base = 0; for (int i = 0; i < NUM_MACRO; ++i) s.macro_amt[i] = 0;
@@ -99,6 +103,11 @@ public:
     const int tt = TransitionTicks();
     Glide(out_c, target_c, tt, c_from, glide_t);
     Glide(out_d, target_d, tt, d_from, glide_t);
+#if XUZU_IS_T41
+    Glide(out_e, target_e, tt, e_from, glide_t);
+    Glide(out_f, target_f, tt, f_from, glide_t);
+    Glide(out_g, target_g, tt, g_from, glide_t);
+#endif
     if (glide_t < tt) glide_t++;
   }
 
@@ -112,6 +121,7 @@ private:
   int active_slots = 4;
   int trig_wait = 0;
   int target_c = 0, target_d = 0, c_from = 0, d_from = 0, glide_t = 0;
+  XUZU_T41(int target_e = 0, target_f = 0, target_g = 0, e_from = 0, f_from = 0, g_from = 0;)
   // candidates collected during one ISR tick (simultaneous hits)
   int cand_mask = 0; int cand_note[4] = {0, 0, 0, 0};
 
@@ -177,6 +187,12 @@ private:
     const int n = (note + 12 * sl.oct) * 128;
     target_c = sl.c_note ? n : Volts(sl.c_val);
     target_d = sl.d_note ? n : Volts(sl.d_val);
+#if XUZU_IS_T41
+    e_from = out_e; f_from = out_f; g_from = out_g;
+    target_e = Volts(sl.e_val); target_f = Volts(sl.f_val); target_g = Volts(sl.g_val);
+    out_h = n;                                    // V/OCT jumps with the trigger
+    if (TransitionTicks() == 0) { out_e = target_e; out_f = target_f; out_g = target_g; }
+#endif
     if (TransitionTicks() == 0) { out_c = target_c; out_d = target_d; }
     trig_wait = s.trig_delay ? s.trig_delay * 17 : 1;
   }
