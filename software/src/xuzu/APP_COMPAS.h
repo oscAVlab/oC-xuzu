@@ -9,6 +9,9 @@
 //          ch1 melody   ch2 chords   ch3 bass.  MIDI clock out.
 // UP / DOWN: page. Left encoder: press = next parameter, turn = edit, long = new material.
 // Long DOWN: remate. Right encoder: turn = soltura, press = new material.
+// o_C T4.1 (Phažerville): left encoder turn = parameter, press = next page; right encoder turn = edit, press = new material;
+//   A / B = page; X = remate; Y = burst (fill); center = next preset, hold = save.  CV5-CV8 assignable like CV1-CV3.
+//   E bass CV, F bass gate, G chord root CV, H clock (one pulse per TR1 clock).
 
 #ifdef ENABLE_APP_COMPAS
 
@@ -16,6 +19,7 @@
 #include "HSApplication.h"
 #include "xuzu/compas_engine.h"
 #include "xuzu/xuzu_flash.h"
+#include "xuzu/xuzu_t41.h"
 
 class Compas : public HSApplication {
 public:
@@ -29,7 +33,7 @@ public:
     CHORDS, BASS, VOICING,
     NUM_PRESET_PARAMS,
     // ---- rack settings, not in presets
-    MIDI = NUM_PRESET_PARAMS, MCLK, CLK, CV1D, CV2D, CV3D, RESET_MODE,
+    MIDI = NUM_PRESET_PARAMS, MCLK, CLK, CV1D, CV2D, CV3D, RESET_MODE, XUZU_T41(CV5D, CV6D, CV7D, CV8D,)
     NUM_SAVED_PARAMS,
     // ---- actions
     DESPL = NUM_SAVED_PARAMS, PRESET, LOAD_ALL, LOAD_SET, SAVE,
@@ -83,6 +87,12 @@ public:
     else Out(3, ((p[OUT_D] ? engine.JFSemis() : engine.RootSemis()) + 12 * (p[OCT_D] - 4)) * 128);
     if (gate_d > 0) --gate_d;
     if (acc_d > 0) --acc_d;
+#if XUZU_IS_T41
+    Out(4, bass_semis * 128);                       // E bass CV
+    GateOut(5, gate_bass > 0);                      // F bass gate
+    if (gate_bass > 0) --gate_bass;
+    Out(6, engine.RootSemis() * 128);               // G chord root
+#endif
     if (flash_a) --flash_a;
     if (flash_c) --flash_c;
     if (msg_timer) --msg_timer;
@@ -127,7 +137,18 @@ public:
     switch (control) {
     case OC::CONTROL_BUTTON_UP:   page = (page + NUM_PAGES - 1) % NUM_PAGES; cursor = 0; break;
     case OC::CONTROL_BUTTON_DOWN: page = (page + 1) % NUM_PAGES; cursor = 0; break;
+#if XUZU_IS_T41
+    case OC::CONTROL_BUTTON_L:    page = (page + 1) % NUM_PAGES; cursor = 0; break;
+    case OC::CONTROL_BUTTON_UP2:  engine.RequestRemate(); Message("Remate"); break;
+    case OC::CONTROL_BUTTON_DOWN2: burst_req = true; break;
+    case OC::CONTROL_BUTTON_M: {
+      const int s = xuzu::NextPreset(p[PRESET], xuzu::NUM_PRESETS, [this](int k) { return HasPreset(k); });
+      if (s < 0) Message("Sin presets"); else RequestLoad(s, true);
+      break;
+    }
+#else
     case OC::CONTROL_BUTTON_L:    cursor = (cursor + 1) % PAGE_LEN[page]; break;
+#endif
     case OC::CONTROL_BUTTON_R:    engine.Reroll(); break;
     default: break;
     }
@@ -135,9 +156,17 @@ public:
   void OnLongPress(int control) {
     if (control == OC::CONTROL_BUTTON_DOWN) engine.RequestRemate();
     if (control == OC::CONTROL_BUTTON_L) engine.Reroll();
+#if XUZU_IS_T41
+    if (control == OC::CONTROL_BUTTON_M) SavePreset(p[PRESET]);
+#endif
   }
+#if XUZU_IS_T41
+  void OnLeftEncoderMove(int dir) { cursor = constrain(cursor + dir, 0, PAGE_LEN[page] - 1); }
+  void OnRightEncoderMove(int dir) { Edit(PAGE_PARAMS[page][cursor], dir); }
+#else
   void OnLeftEncoderMove(int dir) { Edit(PAGE_PARAMS[page][cursor], dir); }
   void OnRightEncoderMove(int dir) { Edit(SOLT, dir); }
+#endif
 
   // ------------------------------------------------------------------ storage
   size_t SaveState(void *dst) {
@@ -162,7 +191,7 @@ public:
 private:
   static constexpr int NUM_PAGES = 8;
   static constexpr const char *PAGE_NAMES[NUM_PAGES] = {"Ritmo", "Armonia", "Loops", "Melodia", "Rafaga", "MIDI", "Entradas", "Presets"};
-  static constexpr int PAGE_LEN[NUM_PAGES] = {8, 4, 8, 8, 8, 6, 4, 4};
+  static constexpr int PAGE_LEN[NUM_PAGES] = {8, 4, 8, 8, 8, 6, XUZU_T41_ELSE(8, 4), 4};
   static constexpr uint8_t PAGE_PARAMS[NUM_PAGES][8] = {
     {STYLE, PERFIL, DENS, ADORNO, EMPUJE, REMATES, OUT_A, DESPL},
     {FAM, PROG, REHARM, FRASE},
@@ -170,7 +199,7 @@ private:
     {MEL_STYLE, NOTAS, RANGO, OCT_B, OCT_D, ORN_CV, OUT_B, OUT_D},
     {B_MODE, B_STEPS, B_HITS, B_ROT, B_LEN, B_CURVE, B_PROB, B_OUT},
     {MIDI, CHORDS, BASS, VOICING, MCLK, CLK},
-    {CV1D, CV2D, CV3D, RESET_MODE},
+    {CV1D, CV2D, CV3D, XUZU_T41(CV5D, CV6D, CV7D, CV8D,) RESET_MODE},
     {PRESET, LOAD_ALL, LOAD_SET, SAVE}};
   static constexpr const char *NAMES[NUM_PARAMS] = {
     "Estilo", "Perfil", "Densidad", "Adorno", "Empuje", "Remates", "Salida A",
@@ -179,11 +208,11 @@ private:
     "Melodia", "Notas", "Rango", "Octava B", "Octava D", "Adornos CV", "Salida B", "Salida D",
     "Disparo", "Pasos", "Golpes", "Rotacion", "Largo", "Curva", "Probab.", "Destino",
     "Acordes", "Bajo", "Voicing",
-    "MIDI USB", "Clock MIDI", "Reloj TR1", "CV1", "CV2", "CV3", "Reset TR2",
+    "MIDI USB", "Clock MIDI", "Reloj TR1", "CV1", "CV2", "CV3", "Reset TR2", XUZU_T41("CV5", "CV6", "CV7", "CV8",)
     "Desplazar", "Preset", "Cargar todo", "Cargar ajustes", "Guardar"};
   static constexpr int MIN_[NUM_PARAMS] = {
     0, 0, 0, 0, 0, 0, 0,   0, 0, 0, 0,   0, 0, 0, 0, 0, 0, 0, 0,   0, 0, 4, 0, 0, 0, 0, 0,
-    0, 2, 1, 0, 0, 0, 0, 0,   0, 0, 0,   0, 0, 0, 0, 0, 0, 0,   -99, 0, 0, 0, 0};
+    0, 2, 1, 0, 0, 0, 0, 0,   0, 0, 0,   0, 0, 0, 0, 0, 0, 0, XUZU_T41(0, 0, 0, 0,)   -99, 0, 0, 0, 0};
   static constexpr int MAX_[NUM_PARAMS] = {
     compas::NUM_STYLES - 1, 1, 100, 100, 100, 1, 2,
     compas::NUM_FAMS - 1, compas::MAX_PROGS, 3, 1,
@@ -191,14 +220,14 @@ private:
     1, 100, 21, 6, 6, 1, 2, 3,
     5, 16, 16, 15, 3, 3, 100, 2,
     2, 5, 1,
-    1, 1, 1, NUM_CV_DEST - 1, NUM_CV_DEST - 1, NUM_CV_DEST - 1, 1,
+    1, 1, 1, NUM_CV_DEST - 1, NUM_CV_DEST - 1, NUM_CV_DEST - 1, 1, XUZU_T41(NUM_CV_DEST - 1, NUM_CV_DEST - 1, NUM_CV_DEST - 1, NUM_CV_DEST - 1,)
     99, xuzu::NUM_PRESETS - 1, 1, 1, 1};
   static constexpr int STEP_[NUM_PARAMS] = {
     1, 1, 5, 5, 5, 1, 1,   1, 1, 1, 1,   1, 1, 1, 5, 1, 1, 1, 1,   1, 5, 1, 1, 1, 1, 1, 1,
-    1, 1, 1, 1, 1, 1, 5, 1,   1, 1, 1,   1, 1, 1, 1, 1, 1, 1,   1, 1, 1, 1, 1};
+    1, 1, 1, 1, 1, 1, 5, 1,   1, 1, 1,   1, 1, 1, 1, 1, 1, 1, XUZU_T41(1, 1, 1, 1,)   1, 1, 1, 1, 1};
   int p[NUM_PARAMS] = {
     0, 0, 55, 30, 20, 1, 0,   0, 1, 0, 0,   4, 5, 3, 15, 0, 3, 3, 0,   0, 50, 10, 4, 4, 1, 0, 0,
-    0, 8, 5, 0, 1, 2, 100, 0,   0, 0, 0,   1, 0, 0, CV_INTENS, CV_PROG, CV_LOOPFRZ, 0,   0, 0, 0, 0, 0};
+    0, 8, 5, 0, 1, 2, 100, 0,   0, 0, 0,   1, 0, 0, CV_INTENS, CV_PROG, CV_LOOPFRZ, 0, XUZU_T41(CV_NADA, CV_NADA, CV_NADA, CV_NADA,)   0, 0, 0, 0, 0};
   int page = 0, cursor = 0;
 
   compas::Engine engine;
@@ -212,13 +241,13 @@ private:
   int since_clock = MAX_PERIOD, period = MAX_PERIOD, tick_period = MAX_PERIOD, clock_count = 0;
   uint32_t raw = 0;
   int skip_clocks = 0, extra_clocks = 0;
-  int flash_a = 0, flash_c = 0, gate_d = 0, acc_d = 0;
+  int flash_a = 0, flash_c = 0, gate_d = 0, acc_d = 0, gate_bass = 0;
   int glide_left = 0, glide_len = 1, glide_from = 0;   // acid slide on output B, in DAC units
   bool slide_next = false;
   int melody_out = 12, bass_semis = 5, arp_semis = 5, arp_i = 0, carp_i = 0;
-  int cv_last[4] = {0, 0, 0, 0};
+  int cv_last[8] = {0, 0, 0, 0, 0, 0, 0, 0};
   int cv_preset = -1;
-  bool cv_freeze = false; int cv_loop = -1, cv_vel = -1; bool cv_burst_gate[3] = {false, false, false};
+  bool cv_freeze = false; int cv_loop = -1, cv_vel = -1; bool cv_burst_gate[7] = {false, false, false, false, false, false, false};
   int8_t mel_note = -1, bass_note = -1, carp_note = -1;
   int8_t chord_on[4] = {-1, -1, -1, -1};
   bool started = false;
@@ -261,9 +290,9 @@ private:
     int add_dens = 0, add_solt = 0, add_adorno = 0, add_notas = 0, add_style = 0, add_prog = 0, add_reharm = 0;
     int fam = p[FAM];
     bool freeze = false; int loopsel = -1, velsel = -1;
-    for (int i = 0; i < 3; ++i) {
-      const int cv = frame.inputs[i];
-      switch (p[CV1D + i]) {
+    for (int i = 0; i < XUZU_T41_ELSE(7, 3); ++i) {
+      const int cv = frame.inputs[xuzu::CvInput(i)];
+      switch (p[i < 3 ? CV1D + i : XUZU_T41_ELSE(CV5D, CV1D) + i - 3]) {
         case CV_ESTILO:  add_style = Sticky(cv, compas::NUM_STYLES, cv_last[i]); break;
         case CV_ARMONIA: fam = (p[FAM] + Sticky(cv, compas::NUM_FAMS, cv_last[i])) % compas::NUM_FAMS; break;
         case CV_PROG:    add_prog = Sticky(cv, compas::Engine::NumProgs(p[FAM]), cv_last[i]); break;
@@ -353,6 +382,9 @@ private:
     period = stopped ? MAX_PERIOD : since_clock;
     since_clock = 0;
     if (stopped) { engine.Realign(); clock_count = 0; raw = 0; }   // auto-align when the Pam starts
+#if XUZU_IS_T41
+    ClockOut(7, PULSE);                             // H clock
+#endif
     RawClock();
     last_tick_from_clock = false;
     const bool flam = engine.Def().flags & compas::F_CELLS;
@@ -432,6 +464,7 @@ private:
   int BassMode() const { return (p[BASS] == 0 && p[OUT_B] == 1) ? (StyleBass() ? 5 : 1) : (p[BASS] == 5 && !StyleBass() ? 1 : p[BASS]); }
   void Bass(int semis, uint8_t vel) {
     bass_semis = semis;
+    gate_bass = constrain(tick_period / 3, HEMISPHERE_CLOCK_TICKS * 5, HEMISPHERE_CLOCK_TICKS * 400);
     if (!p[MIDI] || p[BASS] == 0) return;
     if (bass_note >= 0) usbMIDI.sendNoteOff(bass_note, 0, 3);
     bass_note = (int8_t)constrain(40 + semis, 0, 127);
@@ -791,7 +824,7 @@ private:
     case CHORDS: gfxPrint(CHORD[p[CHORDS]]); break;
     case BASS: gfxPrint(BASSM[p[BASS]]); break;
     case CLK: gfxPrint(p[CLK] ? "x2 del Pam" : "x4 del Pam"); break;
-    case CV1D: case CV2D: case CV3D: gfxPrint(CVD[p[which]]); break;
+    case CV1D: case CV2D: case CV3D: XUZU_T41(case CV5D: case CV6D: case CV7D: case CV8D:) gfxPrint(CVD[p[which]]); break;
     case RESET_MODE: gfxPrint(p[RESET_MODE] ? "Rejilla" : "Ciclo"); break;
     case DESPL: if (p[DESPL] > 0) gfxPrint("+"); gfxPrint(p[DESPL]); break;
     case PRESET: gfxPrint(p[PRESET] + 1); gfxPrint(HasPreset(p[PRESET]) ? "" : " (vacio)"); break;

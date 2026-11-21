@@ -4,12 +4,15 @@
 // CV1 macro  CV2 C/D transition time (0 V = jump)  CV4 preset 1-16
 // A trigger to Brains   B MODEL   C, D: MORPH / HARMONICS / TIMBRE / V/OCT, patch as you like
 // Right encoder: slot. Long left: new material for the internal Compas. Long DOWN: fixed loop on/off.
+// o_C T4.1 (Phažerville): left encoder turn = parameter, press = next page; right encoder turn = edit, press = new material;
+//   A / B = page; X / Y = slot; center = next preset, hold = save.  E MORPH, F HARMONICS, G TIMBRE (per slot), H V/OCT.
 
 #ifdef ENABLE_APP_BRAINSSEQ
 
 #include "HSApplication.h"
 #include "xuzu/brains_engine.h"
 #include "xuzu/xuzu_flash.h"
+#include "xuzu/xuzu_t41.h"
 
 brains::Engine brains_engine;
 
@@ -22,7 +25,7 @@ public:
   static_assert(sizeof(State) != 30, "must differ from the v4.16 layout");
 
   enum Param {
-    SOURCE, MODEL, C_MODE, C_VAL, D_MODE, D_VAL, OCTN,
+    SOURCE, MODEL, C_MODE, C_VAL, D_MODE, D_VAL, XUZU_T41(E_VAL, F_VAL, G_VAL,) OCTN,
     PRESET, LOADP, SAVEP, EPRESET, SAVESTATE,
     C_STYLE, C_FAM, C_DENS, C_SOLT, C_NEW,
     MACRO, M_HITS, M_PROB, M_AZAR, M_ROT, M_DENS, M_SOLT, M_SLOTS,
@@ -57,6 +60,9 @@ public:
     else Out(1, e.out_model);
     Out(2, e.out_c);
     Out(3, e.out_d);
+#if XUZU_IS_T41
+    Out(4, e.out_e); Out(5, e.out_f); Out(6, e.out_g); Out(7, e.out_h);
+#endif
     if (e.trig) { ClockOut(0, HEMISPHERE_CLOCK_TICKS * 5); flash = 800; }
     if (flash) flash--;
     if (msg_timer) msg_timer--;
@@ -92,16 +98,35 @@ public:
     switch (control) {
     case OC::CONTROL_BUTTON_UP:   page = (page + NUM_PAGES - 1) % NUM_PAGES; cursor = 0; break;
     case OC::CONTROL_BUTTON_DOWN: page = (page + 1) % NUM_PAGES; cursor = 0; break;
+#if XUZU_IS_T41
+    case OC::CONTROL_BUTTON_L:    page = (page + 1) % NUM_PAGES; cursor = 0; break;
+    case OC::CONTROL_BUTTON_R:    E().NewMaterial(); Message("Nuevo material"); break;
+    case OC::CONTROL_BUTTON_UP2:  slot = (slot + 3) % 4; break;
+    case OC::CONTROL_BUTTON_DOWN2: slot = (slot + 1) % 4; break;
+    case OC::CONTROL_BUTTON_M: {
+      const int s = xuzu::NextPreset(preset, 16, [](int k) { return xuzu::PresetValid(xuzu::D_BRAINS, k, 1); });
+      if (s < 0) Message("Sin presets"); else { preset = s; LoadPreset(s); }
+      break;
+    }
+#else
     case OC::CONTROL_BUTTON_L:    cursor = (cursor + 1) % PAGE_LEN[page]; break;
+#endif
     default: break;
     }
   }
   void OnLongPress(int control) {
     if (control == OC::CONTROL_BUTTON_DOWN) { E().loop_fixed = !E().loop_fixed; Message(E().loop_fixed ? "Loop fijo" : "Loop libre"); }
     if (control == OC::CONTROL_BUTTON_L) E().NewMaterial();
+#if XUZU_IS_T41
+    if (control == OC::CONTROL_BUTTON_M) SavePreset(preset);
+  }
+  void OnLeftEncoderMove(int dir) { cursor = constrain(cursor + dir, 0, PAGE_LEN[page] - 1); }
+  void OnRightEncoderMove(int dir) { Edit(PAGE_PARAMS[page][cursor], dir); }
+#else
   }
   void OnLeftEncoderMove(int dir) { Edit(PAGE_PARAMS[page][cursor], dir); }
   void OnRightEncoderMove(int dir) { slot = constrain(slot + dir, 0, 3); }
+#endif
 
   size_t SaveState(void *dst) {
     State *s = (State *)dst;
@@ -116,18 +141,19 @@ public:
   }
 
 private:
-  static constexpr int NUM_PAGES = 6;
-  static constexpr const char *PAGE_NAMES[NUM_PAGES] = {"Slots", "Presets", "Compas", "Macro CV1", "Loop / reloj", "Calibrar"};
-  static constexpr int PAGE_LEN[NUM_PAGES] = {7, 5, 5, 8, 6, 8};
+  static constexpr int NUM_PAGES = XUZU_T41_ELSE(7, 6);
+  static constexpr const char *PAGE_NAMES[NUM_PAGES] = {"Slots", XUZU_T41("Salidas E-H",) "Presets", "Compas", "Macro CV1", "Loop / reloj", "Calibrar"};
+  static constexpr int PAGE_LEN[NUM_PAGES] = {7, XUZU_T41(3,) 5, 5, 8, 6, 8};
   static constexpr uint8_t PAGE_PARAMS[NUM_PAGES][8] = {
     {SOURCE, MODEL, C_MODE, C_VAL, D_MODE, D_VAL, OCTN},
+    XUZU_T41({E_VAL, F_VAL, G_VAL},)
     {PRESET, LOADP, SAVEP, EPRESET, SAVESTATE},
     {C_STYLE, C_FAM, C_DENS, C_SOLT, C_NEW},
     {MACRO, M_HITS, M_PROB, M_AZAR, M_ROT, M_DENS, M_SOLT, M_SLOTS},
     {LOOP, LOOP_LEN, PRIORITY, TRANS, TDELAY, CLK},
     {CAL1, CAL2, CAL3, CAL4, CAL5, CAL6, CAL7, CAL8}};
   static constexpr const char *NAMES[NUM_PARAMS] = {
-    "Fuente", "Modelo", "Salida C", "Valor C", "Salida D", "Valor D", "Octava nota",
+    "Fuente", "Modelo", "Salida C", "Valor C", "Salida D", "Valor D", XUZU_T41("E MORPH", "F HARMONICS", "G TIMBRE",) "Octava nota",
     "Preset", "Cargar preset", "Guardar preset", "Euclid preset", "Guardar estado",
     "Estilo", "Armonia", "Densidad", "Soltura", "Nuevo material",
     "Macro", "M: Golpes E", "M: Probab. E", "M: Azar E", "M: Rotacion E", "M: Densidad C", "M: Soltura C", "M: Slots",
@@ -175,6 +201,7 @@ private:
     switch (prm) {
       case SOURCE: return &sl.source; case MODEL: return &sl.model; case C_MODE: return &sl.c_note; case C_VAL: return &sl.c_val;
       case D_MODE: return &sl.d_note; case D_VAL: return &sl.d_val; case OCTN: return (uint8_t *)&sl.oct;
+      XUZU_T41(case E_VAL: return &sl.e_val; case F_VAL: return &sl.f_val; case G_VAL: return &sl.g_val;)
       case EPRESET: return &s.euclid_preset;
       case C_STYLE: return &s.c_style; case C_FAM: return &s.c_fam; case C_DENS: return &s.c_dens; case C_SOLT: return &s.c_solt;
       case MACRO: return (uint8_t *)&s.macro_base;
@@ -190,7 +217,7 @@ private:
     switch (prm) {
       case SOURCE: hi = brains::NUM_SOURCES - 1; break; case MODEL: hi = 7; break;
       case C_MODE: case D_MODE: case PRIORITY: case CLK: case LOOP: hi = 1; break;
-      case C_VAL: case D_VAL: case C_DENS: case C_SOLT: hi = 100; st = 5; break;
+      case C_VAL: case D_VAL: case C_DENS: case C_SOLT: XUZU_T41(case E_VAL: case F_VAL: case G_VAL:) hi = 100; st = 5; break;
       case OCTN: lo = -3; hi = 3; break;
       case EPRESET: hi = 16; break;
       case C_STYLE: hi = compas::NUM_STYLES - 1; break; case C_FAM: hi = compas::NUM_FAMS - 1; break;
@@ -227,7 +254,7 @@ private:
       case SOURCE: gfxPrint(brains::SOURCE_NAMES[v]); break;
       case MODEL: gfxPrint(v + 1); gfxPrint(" ("); PrintVolts(E().calib[v]); gfxPrint(" V)"); break;
       case C_MODE: case D_MODE: gfxPrint(v ? "Nota (V/oct)" : "Valor"); break;
-      case C_VAL: case D_VAL: gfxPrint(v); gfxPrint("% (0-5V)"); break;
+      case C_VAL: case D_VAL: XUZU_T41(case E_VAL: case F_VAL: case G_VAL:) gfxPrint(v); gfxPrint("% (0-5V)"); break;
       case OCTN: if (v > 0) gfxPrint("+"); gfxPrint(v); break;
       case PRESET: gfxPrint(v + 1); gfxPrint(xuzu::PresetValid(xuzu::D_BRAINS, v, 1) ? "" : " (vacio)"); break;
       case EPRESET: if (!v) gfxPrint("No cambia"); else { gfxPrint("Carga el "); gfxPrint(v); } break;
